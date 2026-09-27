@@ -390,7 +390,10 @@ export function leaf(m: MeshBuilder, base: Vec3, dir: Vec3, len: number, width: 
     for (let i = 0; i < steps; i++) {
       for (let j = 0; j < 2; j++) {
         const q = [rows[i][j], rows[i + 1][j], rows[i + 1][j + 1], rows[i][j + 1]];
-        const n = normalize(cross(sub(q[1], q[0]), sub(q[3], q[0])));
+        // (Across the diagonals: where a leaf narrows to a point, two corners meet and the edges
+        // from one of them give no normal at all.)
+        const d = cross(sub(q[2], q[0]), sub(q[3], q[1]));
+        const n = Math.hypot(...d) > 1e-12 ? normalize(d) : up;
         const uv: UV[] = [[j - 1, i / steps], [j - 1, (i + 1) / steps], [j, (i + 1) / steps], [j, i / steps]];
         for (const k of [0, 1, 2, 0, 2, 3]) m.vertex(q[k], n, uv[k], MAT.leaf);
       }
@@ -419,7 +422,10 @@ export function blade(m: MeshBuilder, base: Vec3, dir: Vec3, len: number, width:
     for (let i = 0; i < steps; i++) {
       for (let j = 0; j < 2; j++) {
         const q = [rows[i][j], rows[i + 1][j], rows[i + 1][j + 1], rows[i][j + 1]];
-        const n = normalize(cross(sub(q[1], q[0]), sub(q[3], q[0])));
+        // (Across the diagonals: where a leaf narrows to a point, two corners meet and the edges
+        // from one of them give no normal at all.)
+        const d = cross(sub(q[2], q[0]), sub(q[3], q[1]));
+        const n = Math.hypot(...d) > 1e-12 ? normalize(d) : up;
         const uv: UV[] = [[j - 1, i / steps], [j - 1, (i + 1) / steps], [j, (i + 1) / steps], [j, i / steps]];
         for (const k of [0, 1, 2, 0, 2, 3]) m.vertex(q[k], n, uv[k], MAT.leaf);
       }

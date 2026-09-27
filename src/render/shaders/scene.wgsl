@@ -865,7 +865,9 @@ fn fs(in: VOut) -> @location(0) vec4<f32> {
     let tint = select(vec3<f32>(0.55, 1.0, 0.18) * 60.0, vec3<f32>(0.85, 1.0, 0.55) * 8.0, in.nrm.y > 0.5);
     return vec4<f32>(tint * in.nrm.x * (1.0 - d2) * (1.0 - d2), 1.0);
   }
-  var N = normalize(in.nrm);
+  // (A normal worn down to nothing, where a surface pinches to a point, would come out NaN, and
+  // the bloom would spread that into a black block across the screen: face it to the eye instead.)
+  var N = select(normalize(F.camPos - p), normalize(in.nrm), dot(in.nrm, in.nrm) > 1e-12);
   if (in.mat == MAT_LEAF && dot(N, F.camPos - p) < 0.0) { N = -N; } // (seen from either side)
   if (in.mat == MAT_RUG && (in.uv.y < 0.0 || in.uv.y > 1.0) && !fringeThread(in.uv, in.extra)) { discard; }
   var s: Surface;
