@@ -23,13 +23,19 @@ export interface Quality {
   pixels: number; // most pixels to draw (the picture is scaled up beyond that)
   smooth?: boolean; // draw the fire from its grid with a smooth (tricubic) filter, not a trilinear one
   traceCells?: number; // trace the flow back in steps of at most this many cells (unset: in one step)
+  fps?: number; // the most frames a second to draw (the fire is still worked out sixty times a second)
+  logEvery?: number; // work out the insides of the logs every this many steps (every step unless given)
 }
 
 /** The fire's time step (s): it is simulated sixty times a second of its own time. */
 export const SIM_DT = 1 / 60;
 
 export const QUALITY: Record<string, Quality> = {
-  low: { label: 'Low', cells: 64 * 72 * 32, pressureIterations: 16, pixels: 2_400_000 },
+  // For weak graphics cards and phones: the coarse grid, a smaller picture (scaled up to fill the
+  // screen), drawn thirty times a second, and the insides of the logs worked out every third step
+  // (they change slowly). The same fire, for about a quarter of the work. (Not fewer physics steps:
+  // with fewer, a teepee of logs slowly slumps.)
+  low: { label: 'Low', cells: 64 * 72 * 32, pressureIterations: 16, pixels: 1_000_000, fps: 30, logEvery: 3 },
   medium: { label: 'Medium', cells: 96 * 108 * 48, pressureIterations: 20, pixels: 2_400_000 },
   high: { label: 'High', cells: 128 * 144 * 64, pressureIterations: 24, pixels: 2_400_000 },
   // For the fastest graphics cards there are (and those to come): nearly seven times the cells of

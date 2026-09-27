@@ -716,6 +716,13 @@ async function start() {
   let soundTimer = 0;
 
   const frame = (now: number) => {
+    // A quality that draws fewer frames skips those that come too soon after the last it drew (the
+    // next one then catches the fire up, two steps at a time).
+    const cap = QUALITY[qualityKey].fps;
+    if (cap && now - lastTime < 1000 / cap - 3) {
+      requestAnimationFrame(frame);
+      return;
+    }
     const dt = Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
     acc += dt;
@@ -727,7 +734,7 @@ async function start() {
     logs.update(dt, params);
     logs.prepare(params, SIM_DT);
     let steps = 0;
-    while (acc >= SIM_DT && steps < 2) {
+    while (acc >= SIM_DT && steps < (cap ? 3 : 2)) {
       stepWorld(SIM_DT);
       acc -= SIM_DT;
       steps++;

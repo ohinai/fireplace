@@ -74,8 +74,10 @@ and the rest under **More settings**:
 - **The picture:** brightness, colour (from grey to rich), glow, sparks, heat haze, and
   (outdoors) **Starlight**: how much the stars and the Milky Way are brought out, from 0 (as the
   eye would see them: few stars by moonlight) up; it starts well up, for a sky full of stars.
-- **Quality:** the size of the air's grid: Low, Medium, High, or **Ultra**, for the fastest
-  graphics cards there are and those to come: nearly eight million cells, 3 mm across in a
+- **Quality:** the size of the air's grid: **Low**, for weak graphics cards and phones (the
+  coarse grid, a smaller picture scaled up to the screen, thirty frames a second, and the insides
+  of the logs worked out every third step: about a quarter of the work of Medium), Medium, High,
+  or **Ultra**, for the fastest graphics cards there are and those to come: nearly eight million cells, 3 mm across in a
   fireplace (seven times High's), with the flames drawn through a smooth filter, so that even
   close up no trace of the grid shows in them; sharp on a 4K screen. It takes about a gigabyte
   of graphics memory and runs the fire in slow motion on all but the fastest cards; if there is
@@ -486,7 +488,7 @@ some systems (Linux, older phones, other Firefox builds) it may still be off by 
 browser without it gets a message saying so. It asks for no optional GPU features or raised limits, so wherever
 WebGPU runs it should too; the quality is picked for the graphics card as it starts (a phone
 gets the coarse grid), and the picture is never drawn at more than about 2.4 million pixels
-(8.3 on Ultra). On a touch screen, one finger uses the tool, two look around and pinch zooms;
+(1 million on Low, 8.3 on Ultra). On a touch screen, one finger uses the tool, two look around and pinch zooms;
 while you hold a log, buttons appear to turn it and move it back and forth.
 
 ## Tuning

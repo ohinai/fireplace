@@ -182,16 +182,19 @@ export class FireSim {
       stage('radiation', radiationSrc, [P, S0, { buffer: this.radiation }], [RADIATION_BLOCKS, 1, 1]),
     ];
 
-    logs.attach({
-      scalars: S0,
-      velocity: V0,
-      sampler,
-      radiation: this.radiation,
-      radiationBlocks: RADIATION_BLOCKS,
-      origin: this.origin,
-      h: this.h,
-      dims: this.dims,
-    });
+    logs.attach(
+      {
+        scalars: S0,
+        velocity: V0,
+        sampler,
+        radiation: this.radiation,
+        radiationBlocks: RADIATION_BLOCKS,
+        origin: this.origin,
+        h: this.h,
+        dims: this.dims,
+      },
+      quality,
+    );
   }
 
   /** Scalar field (temperature, fuel, oxygen, soot) after the latest step. */

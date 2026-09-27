@@ -7,7 +7,7 @@ import logMoistureSrc from './shaders/log_moisture.wgsl?raw';
 import logWetnessSrc from './shaders/log_wetness.wgsl?raw';
 
 import { buildBlackbodyTable } from '../blackbody';
-import { AMBIENT_TEMP, BED_HEIGHT, FIREBOX, GRATE, LOG_GRID, WOODS, type Params, type Wood } from '../config';
+import { AMBIENT_TEMP, BED_HEIGHT, FIREBOX, GRATE, LOG_GRID, WOODS, type Params, type Quality, type Wood } from '../config';
 import { halfToFloat } from '../half';
 import { layFire, type FireMode } from '../layouts';
 import { add, cross, dot, length, normalize, quatAxisAngle, quatFromBasis, quatMultiply, quatRotate, scale, sub, type Quat, type Vec3 } from '../math';
@@ -181,6 +181,12 @@ export class LogSystem {
   private activity = 0; // how much of the logs glows (0..1), for warming the walls
   private parity = 0;
   private substeps = 1;
+  // The insides of the logs are worked out every `every` solver steps (Quality.logEvery), each
+  // time for as long as that many steps cover; `ticks` counts the solver steps.
+  private every = 1;
+  private ticks = 0;
+  // Log slots the last pass covered: a slot a log has just left is covered once more, to clear it.
+  private covered = MAX;
   private steps = 0;
   private nextId = 0;
   private time = 0;
@@ -269,9 +275,10 @@ export class LogSystem {
     );
   }
 
-  /** Connects the log model to (a new) gas solver. */
-  attach(gas: GasLink) {
+  /** Connects the log model to (a new) gas solver, working at a quality. */
+  attach(gas: GasLink, quality: Quality) {
     this.gas = gas;
+    this.every = quality.logEvery ?? 1;
     const code = logsSharedSrc + logPhysicsSrc + logSurfaceSrc;
     const groups = [Math.ceil(NS / 8), Math.ceil(NT / 8), MAX];
     this.surfaceStages = [0, 1].map((p) =>
@@ -606,7 +613,7 @@ export class LogSystem {
   prepare(params: Params, simDt: number) {
     const gas = this.gas;
     if (!gas) return;
-    const logDt = simDt * params.burnSpeed;
+    const logDt = simDt * params.burnSpeed * this.every;
     this.substeps = Math.max(1, Math.ceil(logDt / MAX_SUBSTEP));
     const f = new Float32Array(this.stepData);
     const u = new Uint32Array(this.stepData);
@@ -631,12 +638,26 @@ export class LogSystem {
     this.device.queue.writeBuffer(this.stepBuffer, 0, this.stepData);
   }
 
-  /** Advances the log interiors by one solver step (encoded before the gas passes). */
+  /**
+   * Advances the log interiors by one solver step (encoded before the gas passes), or, at a quality
+   * that works them out less often, by several at once every so many steps.
+   */
   encode(pass: GPUComputePassEncoder) {
     if (!this.surfaceStages.length) return;
-    for (let i = 0; i < this.substeps; i++) {
-      this.surfaceStages[this.parity].run(pass);
-      this.voxelStages[this.parity].run(pass);
+    if (this.ticks++ % this.every) return;
+    // Only over the slots in use (up to the highest), not all of them.
+    let live = 0;
+    for (let i = MAX - 1; i >= 0; i--) {
+      if (this.logs[i]) {
+        live = i + 1;
+        break;
+      }
+    }
+    const slots = Math.max(live, this.covered);
+    this.covered = live;
+    for (let i = 0; slots > 0 && i < this.substeps; i++) {
+      this.surfaceStages[this.parity].run(pass, slots);
+      this.voxelStages[this.parity].run(pass, NS * slots);
       this.parity = 1 - this.parity;
     }
     this.steps++;
@@ -1522,7 +1543,8 @@ function buildVoxels(log: Log, preburn: number): Float32Array {
 }
 
 interface Stage {
-  run(pass: GPUComputePassEncoder): void;
+  /** Dispatches it (z: how many workgroups deep, if fewer than it was made for). */
+  run(pass: GPUComputePassEncoder, z?: number): void;
 }
 
 function makeStage(device: GPUDevice, label: string, code: string, resources: GPUBindingResource[], groups: number[]): Stage {
@@ -1535,10 +1557,10 @@ function makeStage(device: GPUDevice, label: string, code: string, resources: GP
   });
   const [x, y, z] = groups;
   return {
-    run(pass) {
+    run(pass, depth = z) {
       pass.setPipeline(pipeline);
       pass.setBindGroup(0, bindGroup);
-      pass.dispatchWorkgroups(x, y, z);
+      pass.dispatchWorkgroups(x, y, Math.min(depth, z));
     },
   };
 }
