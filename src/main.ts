@@ -123,7 +123,10 @@ async function start() {
   const params: Params = { ...DEFAULT_PARAMS };
   loadTweaks(params);
   const query = new URLSearchParams(location.search);
-  let qualityKey = QUALITY[query.get('quality') ?? ''] ? query.get('quality')! : 'medium';
+  // The quality to start at, until the automatic check has timed this machine: Low on a phone
+  // (a touch screen a hand's width across), where even a few seconds of Medium is a struggle.
+  const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
+  let qualityKey = QUALITY[query.get('quality') ?? ''] ? query.get('quality')! : phone ? 'low' : 'medium';
   let autoQuality = !query.has('quality');
   let startQuality = qualityKey; // the quality picked for this machine (what Reset goes back to)
   const fire = load<{ mode: FireMode }>('fire', { mode: 'lit' });

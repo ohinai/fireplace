@@ -31,11 +31,11 @@ export interface Quality {
 export const SIM_DT = 1 / 60;
 
 export const QUALITY: Record<string, Quality> = {
-  // For weak graphics cards and phones: the coarse grid, a smaller picture (scaled up to fill the
-  // screen), drawn thirty times a second, and the insides of the logs worked out every third step
-  // (they change slowly). The same fire, for about a quarter of the work. (Not fewer physics steps:
-  // with fewer, a teepee of logs slowly slumps.)
-  low: { label: 'Low', cells: 64 * 72 * 32, pressureIterations: 16, pixels: 1_000_000, fps: 30, logEvery: 3 },
+  // For phones and weak graphics cards: a coarse grid (15 mm cells in a fireplace), fewer pressure
+  // sweeps to match, a small picture (scaled up to fill the screen) drawn thirty times a second,
+  // and the insides of the logs worked out every fourth step (they change slowly). About a tenth
+  // of the work of Medium. (Not fewer physics steps: with fewer, a teepee of logs slowly slumps.)
+  low: { label: 'Low', cells: 48 * 54 * 24, pressureIterations: 12, pixels: 400_000, fps: 30, logEvery: 4 },
   medium: { label: 'Medium', cells: 96 * 108 * 48, pressureIterations: 20, pixels: 2_400_000 },
   high: { label: 'High', cells: 128 * 144 * 64, pressureIterations: 24, pixels: 2_400_000 },
   // For the fastest graphics cards there are (and those to come): nearly seven times the cells of
