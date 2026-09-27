@@ -11,6 +11,9 @@ Mount Rainier on the horizon, where fireflies blink in the dark and an owl calls
 Bedouin camp in the dunes, with a kettle on the embers; and look up at the real night sky over
 it.
 
+**Light it: [ohinai.github.io/fireplace](https://ohinai.github.io/fireplace/)** (in a browser
+with WebGPU: see *Publishing it* below for which).
+
 ## Run it
 
 ```bash
@@ -456,6 +459,10 @@ Everything is in SI units. A three-log fire releases around 15 kW (up to 25–30
 logs are all catching), with flames around 1300–1500 K. A log lasts roughly an hour.
 
 ## Publishing it
+
+It is published on GitHub Pages at https://ohinai.github.io/fireplace/:
+`.github/workflows/pages.yml` builds it and deploys it on every push to `main` (the repository's
+Pages source is set to GitHub Actions).
 
 `npm run build` makes a static site in `dist/`: put it on any web server or static host (it uses
 relative paths, so a subfolder is fine). It is about 2.1 MB, which comes down as about 0.8 MB
