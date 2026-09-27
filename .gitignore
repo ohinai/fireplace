@@ -1,0 +1,4 @@
+node_modules
+dist
+# Local tool settings (the Claude app's preview servers).
+.claude/

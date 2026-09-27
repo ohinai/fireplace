@@ -1,0 +1,2 @@
+# The star catalogue is binary data: never touch its line endings.
+*.bin binary

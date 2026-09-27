@@ -1,0 +1,656 @@
+:root {
+  color-scheme: dark;
+  --panel-bg: rgba(18, 12, 9, 0.72);
+  --panel-border: rgba(255, 180, 120, 0.12);
+  --text: #f0e2d4;
+  --muted: #b39c88;
+  --accent: #e8914a;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+  color: var(--text);
+}
+
+#scene {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+#panel {
+  position: fixed;
+  top: 12px;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: 12px;
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  width: 260px;
+  font-size: 13px;
+}
+
+#panel .toggle {
+  margin-left: auto;
+  display: block;
+}
+
+#panel .panel-body {
+  display: none;
+  margin-top: 8px;
+  padding: 12px;
+  max-height: calc(100vh - 130px);
+  max-height: calc(100dvh - 130px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+#panel.open .panel-body {
+  display: block;
+}
+
+/* More settings: how the fire behaves, how the picture looks, its workings, performance. */
+#panel .more {
+  margin: 4px 0 2px;
+  border-top: 1px solid var(--panel-border);
+}
+
+#panel .more summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 0 8px;
+  color: var(--text);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+#panel .more summary::-webkit-details-marker {
+  display: none;
+}
+
+#panel .more summary::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  margin: 0 3px 0 2px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s;
+}
+
+#panel .more[open] summary::before {
+  transform: rotate(45deg);
+}
+
+#panel .section {
+  margin: 12px 0 7px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+#panel .actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--panel-border);
+}
+
+#panel .actions button {
+  flex: 1;
+}
+
+/* Credits, at the foot of the panel. */
+#panel .credits {
+  margin-top: 10px;
+}
+
+#panel .credits ul {
+  margin: 0 0 8px;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+#panel .credits li {
+  margin-bottom: 4px;
+}
+
+#panel .credits p {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+#panel .credits a {
+  color: var(--accent);
+}
+
+#panel .credits b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 68px 1fr 36px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--muted);
+}
+
+.row select {
+  grid-column: 2 / 4;
+}
+
+.row output {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+select,
+button {
+  font: inherit;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+
+/* The open list of a dropdown is drawn by the system, which may give it a light background:
+   give it the panel's dark one so the light text reads. */
+select option {
+  color: var(--text);
+  background: #1d1511;
+}
+
+select option:checked {
+  background: #4a2f1f;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.stats {
+  margin: 10px 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+#add-log {
+  position: fixed;
+  right: 16px;
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  bottom: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: 10px 18px;
+  font-size: 14px;
+  background: var(--panel-bg);
+  border-color: rgba(255, 180, 120, 0.25);
+  border-radius: 999px;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/* Tools: tongs, poker, blowing. */
+#toolbar {
+  position: fixed;
+  left: 16px;
+  left: calc(16px + env(safe-area-inset-left, 0px));
+  bottom: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--panel-bg);
+  border: 1px solid rgba(255, 180, 120, 0.25);
+  border-radius: 999px;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+#toolbar button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+}
+
+#toolbar button[aria-pressed='true'] {
+  color: var(--text);
+  background: rgba(232, 145, 74, 0.22);
+  border-color: rgba(232, 145, 74, 0.45);
+}
+
+svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Round buttons in the top left corner: sound, next view, hide the controls. */
+#corner {
+  position: fixed;
+  top: 12px;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 12px;
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  display: flex;
+  gap: 8px;
+}
+
+.round {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--panel-bg);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/* While a log is held in the tongs: turn it, push it back, pull it closer. */
+#holding {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--panel-bg);
+  border: 1px solid rgba(255, 180, 120, 0.25);
+  border-radius: 999px;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  touch-action: none;
+}
+
+#holding[hidden] {
+  display: none;
+}
+
+@media (max-width: 620px) {
+  #holding {
+    bottom: 66px;
+    bottom: calc(66px + env(safe-area-inset-bottom, 0px));
+  }
+
+  #holding span {
+    display: none;
+  }
+}
+
+#holding button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+}
+
+#holding button:hover {
+  color: var(--text);
+}
+
+/* Just the fire: every control hidden, and the pointer too while it is still. A small button
+   to bring them back shows for a moment when the pointer moves. */
+body.bare #panel,
+body.bare #science,
+body.bare #kettle-label,
+body.bare #holding,
+body.bare #corner,
+body.bare #toolbar,
+body.bare #add-log,
+body.bare #hint,
+body.bare #moisture,
+body.bare #labels {
+  display: none;
+}
+
+body.bare:not(.peek) #scene {
+  cursor: none !important;
+}
+
+#show-controls {
+  position: fixed;
+  top: 12px;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 12px;
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s;
+}
+
+body.bare.peek #show-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+body:not(.bare) #show-controls {
+  display: none;
+}
+
+/* Science: the fire's workings shown, and its physics changed. */
+#science {
+  position: fixed;
+  top: 58px;
+  top: calc(58px + env(safe-area-inset-top, 0px));
+  left: 12px;
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 140px);
+  max-height: calc(100dvh - 140px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px 12px;
+  font-size: 13px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+#science[hidden] {
+  display: none;
+}
+
+#science .row {
+  grid-template-columns: 84px 1fr 40px;
+}
+
+#science .head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 14px;
+  letter-spacing: 0.03em;
+}
+
+#science .close {
+  padding: 0 8px;
+  font-size: 18px;
+  line-height: 24px;
+  border: none;
+  background: none;
+  color: var(--muted);
+}
+
+#science .checks {
+  display: flex;
+  gap: 16px;
+  margin: 2px 0 8px 84px;
+}
+
+#science .check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+#science .check input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+#science .section {
+  margin: 12px 0 7px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+#science .readouts {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+
+#science .actions {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--panel-border);
+}
+
+#science .actions button {
+  width: 100%;
+}
+
+#science-button[aria-pressed='true'] {
+  color: var(--text);
+  background: rgba(232, 145, 74, 0.28);
+  border-color: rgba(232, 145, 74, 0.5);
+}
+
+#kettle-label {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  padding: 2px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--panel-bg);
+  border: 1px solid rgba(232, 145, 74, 0.45);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+#kettle-label[hidden] {
+  display: none;
+}
+
+/* The moisture view's key, and the reading on each log. */
+#moisture {
+  position: fixed;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  width: min(360px, calc(100vw - 150px));
+  padding: 8px 12px 6px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+#moisture[hidden] {
+  display: none;
+}
+
+#moisture .title {
+  margin-bottom: 5px;
+  color: var(--text);
+}
+
+#moisture .scale {
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right, #f0dca8, #d9b25a 20%, #6fae6a 40%, #3a9bb5 60%, #2f63c4 80%, #4b2a9a);
+}
+
+#moisture .ticks,
+#moisture .notes {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+#moisture .notes {
+  font-style: italic;
+}
+
+#sky-labels .sky-label {
+  position: fixed;
+  transform: translate(-50%, 6px);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: rgba(170, 190, 230, 0.55);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+body.bare #sky-labels {
+  display: none;
+}
+
+#labels .label {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  padding: 2px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--panel-bg);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+#sound[aria-pressed='true'] .off,
+#sound[aria-pressed='false'] .on {
+  display: none;
+}
+
+@media (max-width: 520px) {
+  #toolbar span {
+    display: none;
+  }
+
+  #toolbar button {
+    padding: 7px;
+  }
+}
+
+#add-log:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+#add-log.shake {
+  animation: shake 0.3s;
+}
+
+@keyframes shake {
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+#hint {
+  position: fixed;
+  left: 50%;
+  bottom: 72px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  max-width: calc(100vw - 32px);
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--panel-bg);
+  border-radius: 999px;
+  pointer-events: none;
+  transition: opacity 2s;
+}
+
+#hint.faded {
+  opacity: 0;
+}
+
+/* While it starts (the physics engine and the GPU get ready). */
+#loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  pointer-events: none;
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+#loading[hidden] {
+  display: none;
+}
+
+@keyframes breathe {
+  50% { opacity: 0.45; }
+}
+
+#message {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  text-align: center;
+  font-size: 16px;
+  color: var(--text);
+  background: #000;
+}
+
+#message[hidden] {
+  display: none;
+}

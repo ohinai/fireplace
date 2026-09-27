@@ -1,0 +1,118 @@
+// Light for surfaces. Needs `F: Frame`, `bb` (blackbody table) and
+// `lights: array<vec4<f32>>` (pairs of position, intensity from lights.wgsl).
+
+const PI: f32 = 3.14159265;
+const CANDLE_TEMP: f32 = 1850.0;
+
+// Top of the fireplace opening above x (0 beside it): straight sides, then an arch.
+fn openingTop(x: f32) -> f32 {
+  let u = x / F.opening.x;
+  if (abs(u) >= 1.0) { return 0.0; }
+  return F.opening.y + (F.opening.z - F.opening.y) * sqrt(1.0 - u * u);
+}
+
+// Light passes between the firebox and the room only through the opening. (The fire lights the
+// firebox and the wall face around the opening fully, as before; round a campfire nothing is in
+// the way.)
+fn throughOpening(p: vec3<f32>, lp: vec3<f32>) -> f32 {
+  if (F.opening.x <= 0.0) { return 1.0; }
+  let lightInside = lp.z < 0.0;
+  if (lightInside && p.z <= 0.0) { return 1.0; }
+  if (!lightInside && p.z > -0.01) { return 1.0; }
+  let c = mix(p, lp, p.z / (p.z - lp.z));
+  let inside = min(F.opening.x - abs(c.x), min(c.y, openingTop(c.x) - c.y));
+  return smoothstep(-0.01, 0.03, inside);
+}
+
+struct Lit {
+  diffuse: vec3<f32>,
+  specular: vec3<f32>,
+};
+
+fn addLight(acc: ptr<function, Lit>, p: vec3<f32>, N: vec3<f32>, V: vec3<f32>, gloss: f32, lp: vec3<f32>, intensity: vec3<f32>) {
+  let toLight = lp - p;
+  let d2 = dot(toLight, toLight) + 0.004;
+  let L = toLight * inverseSqrt(d2);
+  let ndl = dot(N, L);
+  if (ndl <= 0.0) { return; }
+  let E = intensity * (ndl * throughOpening(p, lp) / d2);
+  (*acc).diffuse += E;
+  let H = normalize(L + V);
+  (*acc).specular += E * pow(max(dot(N, H), 0.0), gloss) * (gloss + 8.0) / 8.0;
+}
+
+// How a lamp's light spreads (dir: from the lamp toward the lit point). A fabric shade sends
+// pools of light up and down out of its open ends and glows softly through its sides; a
+// lantern's glass lets light out all round except up into its cap and down into its base.
+fn lampProfile(kind: f32, dir: vec3<f32>) -> f32 {
+  if (kind < 0.5) {
+    return 0.12 + 0.88 * smoothstep(0.5, 0.72, abs(dir.y));
+  }
+  return (1.0 - 0.85 * smoothstep(0.5, 0.85, dir.y)) * (1.0 - 0.7 * smoothstep(0.75, 0.95, -dir.y));
+}
+
+// Where the fire's light is bounced round the room from (roughly the middle of the fire).
+fn fireCentre() -> vec3<f32> {
+  if (F.opening.x <= 0.0) { return vec3<f32>(0.5 * (F.bed.x + F.bed.y), 0.3, 0.5 * (F.bed.z + F.bed.w)); }
+  return vec3<f32>(0.0, 0.3, -0.1);
+}
+
+// Light from outside: the sky all round (more from above) and the moon, the sun or a window
+// from one side. Inside the firebox only a little of it gets in.
+fn outsideLight(p: vec3<f32>, N: vec3<f32>) -> vec3<f32> {
+  let hemi = F.sky.rgb * (0.55 + 0.45 * N.y);
+  let direct = F.sunColour.rgb * max(dot(N, F.sun.xyz), 0.0);
+  var cavity = 1.0;
+  if (F.opening.x > 0.0 && p.z < 0.0 && abs(p.x) < 0.5 && p.y < 0.9) {
+    cavity = mix(0.06, 0.6, smoothstep(-0.4, 0.0, p.z));
+  }
+  return (hemi + direct) * cavity;
+}
+
+// Outgoing light from a surface: the flames' lights, the coals, candles and lamps, light
+// bounced around the room, light from outside, and the surface's own glow.
+fn shade(p: vec3<f32>, N: vec3<f32>, albedo: vec3<f32>, spec: f32, gloss: f32, emission: vec3<f32>) -> vec3<f32> {
+  let V = normalize(F.camPos - p);
+  var lit = Lit(vec3<f32>(0.0), vec3<f32>(0.0));
+  var total = vec3<f32>(0.0);
+  for (var i = 0u; i < F.numLights; i++) {
+    let intensity = lights[2u * i + 1u].rgb;
+    total += intensity;
+    addLight(&lit, p, N, V, gloss, lights[2u * i].xyz, intensity);
+  }
+  for (var i = 0u; i < 3u; i++) {
+    let ember = F.embers[2u * i + 1u].rgb;
+    if (ember.r + ember.g + ember.b <= 0.0) { continue; }
+    addLight(&lit, p, N, V, gloss, F.embers[2u * i].xyz, ember);
+    total += ember;
+  }
+  for (var i = 0u; i < 4u; i++) {
+    let c = F.candles[i];
+    if (c.w <= 0.0) { continue; }
+    let candle = blackbody(CANDLE_TEMP) * c.w;
+    addLight(&lit, p, N, V, gloss, c.xyz + vec3<f32>(0.0, 0.015, 0.0), candle);
+    total += candle;
+  }
+
+  // Inside the firebox direct light dominates; out in the room, light bounced off the floor,
+  // walls and ceiling is what shows the fireplace surround (more in a pale room), fading with
+  // distance from the fire, though far less than the fire's own light does: it comes from
+  // the whole room. The lamps' light is bounced round the room too. (Round a campfire there
+  // is little to bounce it: it fades as fast as the fire's light.)
+  let open = F.opening.x <= 0.0;
+  let inRoom = select(smoothstep(-0.05, 0.05, p.z), 1.0, open);
+  let fromFire = p - fireCentre();
+  let spread = select(7.0, 2.5, open);
+  let near = 1.0 / (1.0 + dot(fromFire, fromFire) / spread);
+  var bounce = total * mix(0.05, 0.15 * F.opening.w * near, inRoom);
+  for (var i = 0u; i < 2u; i++) {
+    let lp = F.lamps[2u * i];
+    let lc = F.lamps[2u * i + 1u].rgb;
+    if (lc.r + lc.g + lc.b <= 0.0) { continue; }
+    let dir = normalize(p - lp.xyz);
+    addLight(&lit, p, N, V, gloss, lp.xyz, lc * lampProfile(lp.w, dir));
+    let fromLamp = p - lp.xyz;
+    bounce += lc * mix(0.02, 0.15 * F.opening.w, inRoom) / (1.0 + dot(fromLamp, fromLamp) / spread);
+  }
+  return albedo / PI * (lit.diffuse + bounce) + albedo * outsideLight(p, N) + spec * lit.specular / PI + emission;
+}
