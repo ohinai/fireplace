@@ -127,6 +127,8 @@ export interface UIHandlers {
   onLighting(lighting: Lighting): void;
   onQuality(key: string): void;
   onDetail(detail: Detail): void;
+  /** Smooth the stair-stepped edges (anti-aliasing), or leave them sharp. */
+  onSmoothEdges(on: boolean): void;
   onView(key: string): void;
   onShow(view: number): void;
   onSky(sky: SkySettings): void;
@@ -158,6 +160,7 @@ export interface Settings {
   lighting: Lighting;
   sky: SkySettings;
   detail: Detail;
+  smoothEdges: boolean;
   volume: number;
   quality: string;
   view?: string; // (left as it is if not given)
@@ -193,6 +196,7 @@ export interface SoundSettings {
 export interface Choices {
   quality: string;
   detail: Detail;
+  smoothEdges: boolean;
   view: string;
   sky: SkySettings;
 }
@@ -279,6 +283,17 @@ export function createUI(
     if (s.outdoors) outdoorOnly.push(r.row);
     more.append(r.row);
   }
+  const edgesSelect = select(
+    'Edges',
+    [
+      ['smooth', 'Smoothed'],
+      ['sharp', 'Left sharp'],
+    ],
+    choices.smoothEdges ? 'smooth' : 'sharp',
+    (v) => handlers.onSmoothEdges(v === 'smooth'),
+    'Smooths the stair-stepped edges of the logs, the grate and the furniture (anti-aliasing)',
+  );
+  more.append(edgesSelect.row);
   more.append(heading('Performance'));
   const qualitySelect = select(
     'Quality',
@@ -608,6 +623,7 @@ export function createUI(
       moon.input.value = sky.moon ? 'shown' : 'hidden';
       figures.input.value = sky.constellations ? 'figures' : 'plain';
       detailSelect.input.value = s.detail;
+      edgesSelect.input.value = s.smoothEdges ? 'smooth' : 'sharp';
       volume.set(s.volume);
       qualitySelect.input.value = s.quality;
       if (s.view) {

@@ -7,6 +7,7 @@ import volumeSrc from './shaders/volume.wgsl?raw';
 import flameNoiseSrc from './shaders/flame_noise.wgsl?raw';
 import flameCoordsSrc from './shaders/flame_coords.wgsl?raw';
 import relightSrc from './shaders/relight.wgsl?raw';
+import fxaaSrc from './shaders/fxaa.wgsl?raw';
 import sceneSrc from './shaders/scene.wgsl?raw';
 import furnishingsSrc from './shaders/furnishings.wgsl?raw';
 import starsSrc from './shaders/stars.wgsl?raw';
@@ -130,6 +131,8 @@ interface Targets {
   downGroups: GPUBindGroup[];
   upGroups: GPUBindGroup[];
   combineGroups: GPUBindGroup[];
+  finished: GPUTexture; // the finished picture, before its edges are smoothed (see smoothEdges)
+  fxaaGroup: GPUBindGroup;
 }
 
 export class Renderer {
@@ -201,12 +204,15 @@ export class Renderer {
   private readonly upPipeline: GPURenderPipeline;
   private readonly combinePipeline: GPURenderPipeline;
   private readonly compositePipeline: GPURenderPipeline;
+  private readonly fxaaPipeline: GPURenderPipeline;
   private readonly texSampLayout: GPUBindGroupLayout;
   private readonly logGroup: GPUBindGroup;
   readonly sparks: Sparks;
   readonly steam: Steam;
   /** A kettle set down by the fire (where the room has a place for one). */
   kettle = false;
+  /** Smooth the stair-stepped edges of the finished picture (anti-aliasing: fxaa.wgsl). */
+  smoothEdges = true;
   /** Science overlays (off unless asked for). */
   overlay: Overlay = { grid: false, flow: false, slice: 0 };
   private readonly overlayBuf: GPUBuffer;
@@ -531,6 +537,14 @@ export class Renderer {
       fragment: { module: compositeModule, entryPoint: 'fs', targets: [{ format: this.format }] },
       primitive: { topology: 'triangle-list' },
     });
+    const fxaaModule = module('fxaa', fxaaSrc);
+    this.fxaaPipeline = device.createRenderPipeline({
+      label: 'fxaa',
+      layout: postLayout,
+      vertex: { module: fxaaModule, entryPoint: 'vs' },
+      fragment: { module: fxaaModule, entryPoint: 'fs', targets: [{ format: this.format }] },
+      primitive: { topology: 'triangle-list' },
+    });
   }
 
   /**
@@ -680,7 +694,7 @@ export class Renderer {
   resize(width: number, height: number) {
     if (this.targets) {
       const t = this.targets;
-      for (const tex of [t.scene, t.depth, t.volume, t.heat, t.hdr, ...t.history, ...t.bloom]) tex.destroy();
+      for (const tex of [t.scene, t.depth, t.volume, t.heat, t.hdr, t.finished, ...t.history, ...t.bloom]) tex.destroy();
     }
     if (this.kept) for (const tex of Object.values(this.kept)) tex.destroy();
     const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
@@ -745,7 +759,8 @@ export class Renderer {
         ],
       }),
     );
-    this.targets = { scene, depth, volume, heat, history, hdr, bloom, downGroups, upGroups, combineGroups };
+    const finished = target('finished', this.format);
+    this.targets = { scene, depth, volume, heat, history, hdr, bloom, downGroups, upGroups, combineGroups, finished, fxaaGroup: texSamp(finished) };
 
     this.compositeGroup = this.device.createBindGroup({
       label: 'composite',
@@ -961,14 +976,27 @@ export class Renderer {
       pass.end();
     }
 
+    // The finished picture: straight to the screen, or first to a texture for its edges to be
+    // smoothed on the way there.
+    const screen = this.context.getCurrentTexture().createView();
     const out = enc.beginRenderPass({
       label: 'composite',
-      colorAttachments: [{ view: this.context.getCurrentTexture().createView(), clearValue: [0, 0, 0, 1], loadOp: 'clear', storeOp: 'store' }],
+      colorAttachments: [{ view: this.smoothEdges ? t.finished.createView() : screen, clearValue: [0, 0, 0, 1], loadOp: 'clear', storeOp: 'store' }],
     });
     out.setPipeline(this.compositePipeline);
     out.setBindGroup(0, this.compositeGroup);
     out.draw(3);
     out.end();
+    if (this.smoothEdges) {
+      const fxaa = enc.beginRenderPass({
+        label: 'fxaa',
+        colorAttachments: [{ view: screen, clearValue: [0, 0, 0, 1], loadOp: 'clear', storeOp: 'store' }],
+      });
+      fxaa.setPipeline(this.fxaaPipeline);
+      fxaa.setBindGroup(0, t.fxaaGroup);
+      fxaa.draw(3);
+      fxaa.end();
+    }
 
     const o = this.overlay;
     if ((o.grid || o.flow) && this.overlayGroup) {

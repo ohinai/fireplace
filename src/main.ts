@@ -65,7 +65,8 @@ function forget(key: string) {
 
 // How the settings start, and what Reset puts them back to.
 const DEFAULT_LIGHTING: Lighting = { lamps: 0, candles: true, time: 'night' };
-const DEFAULT_LOOK: { detail: Detail; sky: SkySettings } = { detail: 'medium', sky: { moon: true, constellations: false } };
+type Look = { detail: Detail; sky: SkySettings; smoothEdges: boolean };
+const DEFAULT_LOOK: Look = { detail: 'medium', sky: { moon: true, constellations: false }, smoothEdges: true };
 const DEFAULT_VOLUME = 0.7;
 
 /**
@@ -139,7 +140,7 @@ async function start() {
   const fire = load<{ mode: FireMode }>('fire', { mode: 'lit' });
   if (query.get('fire') === 'cold' || query.get('fire') === 'lit') fire.mode = query.get('fire') as FireMode;
   const lighting = load<Lighting>('lighting', { ...DEFAULT_LIGHTING });
-  const look = load<{ detail: Detail; sky: SkySettings }>('look', { ...DEFAULT_LOOK, sky: { ...DEFAULT_LOOK.sky } });
+  const look = load<Look>('look', { ...DEFAULT_LOOK, sky: { ...DEFAULT_LOOK.sky } });
   if (!DETAILS.some(([d]) => d === look.detail)) look.detail = DEFAULT_LOOK.detail;
 
   const logs = new LogSystem(device, await physicsLoading, ROOMS[initialRoom(query)]);
@@ -149,6 +150,7 @@ async function start() {
   sim.reset(params);
   const renderer = new Renderer(device, context, format, logs, look.detail);
   renderer.lighting = lighting;
+  renderer.smoothEdges = look.smoothEdges;
   renderer.sky.moonless = !look.sky.moon;
   renderer.constellations = look.sky.constellations;
   // The stars of the night sky outdoors: they load while the fire gets going.
@@ -416,7 +418,7 @@ async function start() {
     history.replaceState(null, '', url);
   };
 
-  const ui = createUI(params, { quality: qualityKey, detail: look.detail, view: logs.room.views[0].key, sky: look.sky }, sound, logs.room, fire.mode, { ...lighting }, {
+  const ui = createUI(params, { quality: qualityKey, detail: look.detail, smoothEdges: look.smoothEdges, view: logs.room.views[0].key, sky: look.sky }, sound, logs.room, fire.mode, { ...lighting }, {
     onRoom: (key) => {
       countEvent(`room/${key}`, `Room picked: ${ROOMS[key].label}`);
       setRoom(key);
@@ -429,6 +431,11 @@ async function start() {
       look.detail = detail;
       save('look', look);
       renderer.setRoom(detail);
+    },
+    onSmoothEdges: (on) => {
+      look.smoothEdges = on;
+      save('look', look);
+      renderer.smoothEdges = on;
     },
     onKettle: (on) => setKettle(on),
     onSky: (sky) => {
@@ -513,7 +520,7 @@ async function start() {
     logs.setMoisture(null);
   };
   const refreshUI = (view?: string) =>
-    ui.refresh({ params, lighting, sky: look.sky, detail: look.detail, volume: sound.volume, quality: qualityKey, view, overlay: renderer.overlay, moisture: logs.wetness });
+    ui.refresh({ params, lighting, sky: look.sky, detail: look.detail, smoothEdges: look.smoothEdges, volume: sound.volume, quality: qualityKey, view, overlay: renderer.overlay, moisture: logs.wetness });
 
   /**
    * Puts every setting back to how it started: the sliders, the science, the lights, the sky,
@@ -536,6 +543,8 @@ async function start() {
       look.detail = DEFAULT_LOOK.detail;
       renderer.setRoom(look.detail);
     }
+    look.smoothEdges = DEFAULT_LOOK.smoothEdges;
+    renderer.smoothEdges = look.smoothEdges;
     forget('look');
     sound.volume = DEFAULT_VOLUME;
     audio.setVolume(sound.volume);

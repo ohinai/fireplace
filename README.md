@@ -74,6 +74,8 @@ and the rest under **More settings**:
 - **The picture:** brightness, colour (from grey to rich), glow, sparks, heat haze, and
   (outdoors) **Starlight**: how much the stars and the Milky Way are brought out, from 0 (as the
   eye would see them: few stars by moonlight) up; it starts well up, for a sky full of stars.
+  **Edges:** smoothed (anti-aliasing, by FXAA: the stair steps along the edges of the logs,
+  the grate and the furniture blended away) or left sharp.
 - **Quality:** the size of the air's grid: **Low**, for phones and weak graphics cards (a coarse
   grid of 15 mm cells, a small picture scaled up to the screen, thirty frames a second, and the
   insides of the logs worked out every fourth step: about a tenth of the work of Medium; phones
