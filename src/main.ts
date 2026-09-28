@@ -12,6 +12,7 @@ import { LogPhysics } from './sim/LogPhysics';
 import { LogSystem } from './sim/LogSystem';
 import { Tools, type ToolName } from './tools';
 import { Critters } from './critters';
+import { countEvent } from './stats';
 import { createUI, MOISTURE_VIEW, SCIENCE_SLIDERS, SLIDERS, TOUCH, type SkySettings, type SoundSettings } from './ui';
 import starsUrl from './sky/stars.bin?url';
 import { parseStars } from './sky/stars';
@@ -101,6 +102,7 @@ async function start() {
   const canvas = document.getElementById('scene') as HTMLCanvasElement;
   if (!navigator.gpu) {
     showMessage(NO_WEBGPU);
+    countEvent('no-webgpu', 'No WebGPU in this browser');
     return;
   }
   // The physics engine loads while the GPU gets ready.
@@ -108,11 +110,14 @@ async function start() {
   const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
   if (!adapter) {
     showMessage('This browser has WebGPU, but found no graphics card it can use for it (it may be switched off, or blocked for this one).');
+    countEvent('no-gpu-adapter', 'WebGPU, but no graphics card it can use');
     return;
   }
   const device = await adapter.requestDevice({ label: 'fireplace' });
   device.lost.then((info) => {
-    if (info.reason !== 'destroyed') showMessage(`The GPU device was lost: ${info.message}`);
+    if (info.reason === 'destroyed') return;
+    showMessage(`The GPU device was lost: ${info.message}`);
+    countEvent('gpu-lost', 'The graphics card gave up (device lost)');
   });
   device.addEventListener('uncapturederror', (e) => console.error('WebGPU error:', (e as GPUUncapturedErrorEvent).error.message));
 
@@ -201,7 +206,10 @@ async function start() {
   const critters = new Critters();
   critters.setWild(logs.room.wild);
   critters.onRustle = (p, loud) => audio.rustle(pan(p), loud);
-  critters.onKnocks = (p) => audio.woodKnocks(pan(p));
+  critters.onKnocks = (p) => {
+    audio.woodKnocks(pan(p));
+    countEvent('bigfoot', 'Bigfoot came by');
+  };
   /** How bright the fire is (0..1), for eyes in the dark to shine back. */
   const fireLevel = () => Math.min(sim.flamePower / FLAME_REF + 0.3 * logs.bed.glow, 1);
   const stepCritters = (dt: number) => {
@@ -405,7 +413,10 @@ async function start() {
   };
 
   const ui = createUI(params, { quality: qualityKey, detail: look.detail, view: logs.room.views[0].key, sky: look.sky }, sound, logs.room, fire.mode, { ...lighting }, {
-    onRoom: setRoom,
+    onRoom: (key) => {
+      countEvent(`room/${key}`, `Room picked: ${ROOMS[key].label}`);
+      setRoom(key);
+    },
     onView: (key) => {
       const view = logs.room.views.find((v) => v.key === key);
       if (view) camera.setView(view);
@@ -442,6 +453,7 @@ async function start() {
     },
     onQuality: (key) => {
       autoQuality = false;
+      countEvent(`quality-picked/${key}`, `Quality picked: ${QUALITY[key].label}`);
       setQuality(key);
     },
     onRelight: startOver,
@@ -790,6 +802,11 @@ async function start() {
       autoQuality = false;
       if (frameTimeAvg > 30 && qualityKey !== 'low') setQuality(qualityKey === 'high' ? 'medium' : 'low');
       startQuality = qualityKey;
+      // What this device settled on, and how smoothly it ran on the way.
+      const fps = 1000 / frameTimeAvg;
+      const band = fps < 15 ? 'under 15' : fps < 25 ? '15-25' : fps < 40 ? '25-40' : '40+';
+      countEvent(`quality/${qualityKey}`, `Settled on ${QUALITY[qualityKey].label}${phone ? ' (phone)' : ''}`);
+      countEvent(`fps/${band.replace(' ', '-')}`, `${band} frames a second (${QUALITY[qualityKey].label})`);
     }
     statsTimer += dt;
     if (statsTimer > 0.5) {
@@ -820,4 +837,5 @@ async function start() {
 start().catch((err) => {
   console.error(err);
   showMessage(`Something went wrong starting the fireplace: ${err instanceof Error ? err.message : String(err)}`);
+  countEvent('start-error', 'Failed to start');
 });

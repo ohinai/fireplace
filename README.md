@@ -463,6 +463,11 @@ logs are all catching), with flames around 1300–1500 K. A log lasts roughly an
 
 ## Publishing it
 
+It counts its visits with [GoatCounter](https://www.goatcounter.com) (no cookies, nothing that
+identifies anyone), and a few events (`src/stats.ts`): the room picked, the quality a device settles
+on and roughly how many frames a second it managed, the quality picked by hand, a browser without
+WebGPU (or a graphics card that gives up), and Bigfoot coming by.
+
 It is published on GitHub Pages at https://ohinai.github.io/fireplace/:
 `.github/workflows/pages.yml` builds it and deploys it on every push to `main` (the repository's
 Pages source is set to GitHub Actions).
