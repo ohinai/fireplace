@@ -302,6 +302,28 @@ export function createUI(
   actions.append(relight, reset);
   body.append(actions);
 
+  // ---- Controls: what the hint at the start said (it fades), and every key ----------------------
+  const controls = document.createElement('details');
+  controls.className = 'more credits controls';
+  const controlsSummary = document.createElement('summary');
+  controlsSummary.textContent = 'Controls';
+  const keys = document.createElement('ul');
+  for (const html of [
+    '<b>Tongs</b> <kbd>1</kbd>: drag a log to pick it up and move it; <kbd>W</kbd> <kbd>S</kbd> or the wheel move it back and forth, <kbd>Q</kbd> <kbd>E</kbd> turn it',
+    '<b>Poker</b> <kbd>2</kbd>: drag to push logs about, click to jab',
+    '<b>Blow</b> <kbd>3</kbd>: drag across the coals',
+    '<b>Match</b> <kbd>4</kbd>: press to strike it and hold it to a firelighter',
+    '<kbd>L</kbd> or <b>Add a log</b>: another log on the fire',
+    'Right-drag (or two fingers) looks around; the wheel (or pinching) zooms',
+    '<kbd>M</kbd> sound on or off, <kbd>V</kbd> next view, <kbd>H</kbd> hide the controls (<kbd>Esc</kbd> brings them back), <kbd>X</kbd> science',
+  ]) {
+    const item = document.createElement('li');
+    item.innerHTML = html;
+    keys.append(item);
+  }
+  controls.append(controlsSummary, keys);
+  body.append(controls);
+
   // ---- Credits --------------------------------------------------------------------------------
   const credits = document.createElement('details');
   credits.className = 'more credits';
@@ -692,18 +714,27 @@ function range(
   input.max = String(max);
   input.step = String(step);
   input.value = String(value);
-  const out = document.createElement('output');
-  out.textContent = show(value);
+  // The value as it reads (70%, 1.0×...): shown beside the slider, and what a screen reader says for
+  // it. (A span, not an output: a label may hold only one control.)
+  const out = document.createElement('span');
+  out.className = 'value';
+  out.setAttribute('aria-hidden', 'true');
+  const shown = (v: number) => {
+    const text = show(v);
+    out.textContent = text;
+    input.setAttribute('aria-valuetext', text);
+  };
+  shown(value);
   input.addEventListener('input', () => {
     const v = Number(input.value);
-    out.textContent = show(v);
+    shown(v);
     onInput(v);
   });
   if (onCommit) input.addEventListener('change', onCommit);
   row.append(name, input, out);
   const set = (v: number) => {
     input.value = String(v);
-    out.textContent = show(v);
+    shown(v);
   };
   return { row, input, set };
 }

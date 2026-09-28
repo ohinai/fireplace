@@ -21,6 +21,19 @@ body {
   color: var(--text);
 }
 
+/* There for screen readers, not seen. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 #scene {
   display: block;
   width: 100vw;
@@ -39,9 +52,14 @@ body {
   font-size: 13px;
 }
 
+/* (On the panel's dark ground like the other controls, so it reads against a bright sky too.) */
 #panel .toggle {
   margin-left: auto;
   display: block;
+  background: var(--panel-bg);
+  border-color: rgba(255, 180, 120, 0.25);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
 }
 
 #panel .panel-body {
@@ -119,9 +137,13 @@ body {
   flex: 1;
 }
 
-/* Credits, at the foot of the panel. */
+/* Controls and credits, at the foot of the panel. */
 #panel .credits {
   margin-top: 10px;
+}
+
+#panel .controls + .credits {
+  margin-top: 0;
 }
 
 #panel .credits ul {
@@ -134,6 +156,14 @@ body {
 
 #panel .credits li {
   margin-bottom: 4px;
+}
+
+#panel .controls kbd {
+  padding: 0 4px;
+  font: inherit;
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
 }
 
 #panel .credits p {
@@ -165,7 +195,7 @@ body {
   grid-column: 2 / 4;
 }
 
-.row output {
+.row .value {
   text-align: right;
   font-variant-numeric: tabular-nums;
   color: var(--text);
@@ -651,6 +681,24 @@ body.bare #sky-labels {
   background: #000;
 }
 
+#message > div {
+  max-width: 40em;
+  line-height: 1.5;
+}
+
 #message[hidden] {
   display: none;
+}
+
+/* For someone who asks for less motion: the controls hold still (and the camera cuts from view to
+   view rather than gliding: camera.ts). The fire itself is the point, and moves as ever. */
+@media (prefers-reduced-motion: reduce) {
+  #loading,
+  #add-log.shake {
+    animation: none;
+  }
+
+  #hint {
+    transition: none;
+  }
 }

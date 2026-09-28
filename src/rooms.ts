@@ -59,6 +59,8 @@ export interface Lamp {
 export interface Room {
   key: RoomKey;
   label: string;
+  /** What the picture shows, in words (for screen readers). */
+  alt: string;
   /** Ways of looking at it (the camera starts in the first). */
   views: CameraView[];
   frameWidth: number; // m either side of the fire that should stay in view on narrow screens
@@ -102,6 +104,7 @@ export const ROOMS: Record<RoomKey, Room> = {
   brick: {
     key: 'brick',
     label: 'Brick hearth',
+    alt: 'A wood fire burning in a brick fireplace, in a sitting room at night',
     views: [
       orbit('front', 'In front', [0, 0.3, -0.18], 1.75, 0, 0.14),
       orbit('close', 'Close up', [0, 0.2, -0.2], 0.95, 0, 0.12),
@@ -140,6 +143,7 @@ export const ROOMS: Record<RoomKey, Room> = {
   hacienda: {
     key: 'hacienda',
     label: 'Hacienda',
+    alt: 'A wood fire burning in the adobe fireplace of a Spanish hacienda, framed in Talavera tiles',
     views: [
       orbit('front', 'In front', [0, 0.36, -0.08], 2.25, 0, 0.14),
       orbit('close', 'Close up', [0, 0.2, -0.2], 1.0, 0, 0.12),
@@ -179,6 +183,7 @@ export const ROOMS: Record<RoomKey, Room> = {
   campfire: {
     key: 'campfire',
     label: 'Campfire',
+    alt: 'A campfire in a ring of stones, in a mountain meadow with Mount Rainier on the horizon',
     views: [
       orbit('fire', 'By the fire', [0, 0.25, 0], 2.2, 0, 0.19),
       orbit('close', 'Close up', [0, 0.2, 0], 1.1, 0.3, 0.3),
@@ -214,6 +219,7 @@ export const ROOMS: Record<RoomKey, Room> = {
   desert: {
     key: 'desert',
     label: 'Desert camp',
+    alt: 'A fire of desert wood burning in the sand at a Bedouin camp, a goat-hair tent behind it',
     views: [
       orbit('fire', 'By the fire', [0, 0.2, 0], 2.1, 0.25, 0.2),
       orbit('close', 'Close up', [0, 0.12, 0], 1.0, 0.45, 0.32),

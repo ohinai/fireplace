@@ -27,8 +27,10 @@ const COLD_HINT = 'The fire is laid but not lit: take the match (4) and hold it 
 function showMessage(html: string) {
   document.getElementById('loading')!.hidden = true;
   const el = document.getElementById('message')!;
-  el.innerHTML = html;
+  // (Shown first, then filled, so that screen readers read it out; in one block, so that the
+  // centring grid lays it out as one paragraph rather than each run of text on its own.)
   el.hidden = false;
+  el.innerHTML = `<div>${html}</div>`;
 }
 
 const NO_WEBGPU =
@@ -157,6 +159,7 @@ async function start() {
   renderer.setSim(sim);
   const camera = new Camera();
   camera.frame(logs.room);
+  canvas.setAttribute('aria-label', logs.room.alt);
   const sparks = renderer.sparks;
 
   // --- Sound ---------------------------------------------------------------------------------
@@ -394,6 +397,7 @@ async function start() {
     replaceSim();
     renderer.setRoom();
     camera.frame(logs.room);
+    canvas.setAttribute('aria-label', logs.room.alt);
     kettle = null;
     kettleBody = -1;
     renderer.kettle = false;

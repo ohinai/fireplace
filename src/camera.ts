@@ -50,8 +50,9 @@ export class Camera {
     this.apply(room.views[0]);
   }
 
-  /** Goes to a view: gliding there, or at once. */
+  /** Goes to a view: gliding there, or at once (always at once for someone who asks for less motion). */
   setView(view: CameraView, glide = true) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) glide = false;
     this.flight = glide ? { from: { eye: [...this.eye], target: [...this.target], fov: this.fovDeg }, view, t: 0 } : null;
     if (!glide) this.apply(view);
   }
