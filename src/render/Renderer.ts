@@ -6,6 +6,7 @@ import lightFieldSrc from './shaders/lightfield.wgsl?raw';
 import volumeSrc from './shaders/volume.wgsl?raw';
 import flameNoiseSrc from './shaders/flame_noise.wgsl?raw';
 import flameCoordsSrc from './shaders/flame_coords.wgsl?raw';
+import relightSrc from './shaders/relight.wgsl?raw';
 import sceneSrc from './shaders/scene.wgsl?raw';
 import furnishingsSrc from './shaders/furnishings.wgsl?raw';
 import starsSrc from './shaders/stars.wgsl?raw';
@@ -20,13 +21,13 @@ import { Sparks } from './Sparks';
 import { Steam } from './Steam';
 
 import { buildBlackbodyTable } from '../blackbody';
-import { AMBIENT_TEMP, LOG_GRID, type Detail, type Params } from '../config';
+import { AMBIENT_TEMP, type Detail, type Params } from '../config';
 import { cross, normalize, sub, type Vec3 } from '../math';
 import { fireCentre } from '../rooms';
 import type { FireSim } from '../sim/FireSim';
 import type { LighterView, LogSystem } from '../sim/LogSystem';
 import type { Camera } from '../camera';
-import { buildLogTemplate, buildScene, Clearings, MAX_CLEARINGS, VERTEX_FLOATS } from './geometry';
+import { buildLogTemplate, buildScene, Clearings, MAX_CLEARINGS, splitScene, VERTEX_FLOATS } from './geometry';
 import { buildPropsMesh } from './toolMesh';
 import type { Mat3, Place } from '../sky/astro';
 import { CONSTELLATION_LINES, CONSTELLATION_NAMES } from '../sky/constellations';
@@ -38,6 +39,24 @@ import type { CritterView } from '../critters';
 const HDR_FORMAT: GPUTextureFormat = 'rgba16float';
 const HEAT_FORMAT: GPUTextureFormat = 'rg16float';
 const DEPTH_FORMAT: GPUTextureFormat = 'depth32float';
+const KEPT_FORMAT: GPUTextureFormat = 'rgba16float'; // what the still scene is made of (see keep())
+// (Normals in full floats: a glossy highlight (glazed tiles, brass) turns a half float's error in
+// the normal into a few levels' difference in the picture.)
+const KEPT_NORMAL_FORMAT: GPUTextureFormat = 'rgba32float';
+/**
+ * What the still scene's materials read from the frame's uniforms (as [first, end) float offsets
+ * in writeFrame's layout), and by how much each may drift before they are worked out again: the
+ * opening, the light and sky outside, the sky's turning, the Moon and the Sun (a little looser:
+ * the sky turns a quarter of a degree a minute, and a step every quarter of a minute or so does not
+ * show), the starlight, and the furniture's fading.
+ */
+const KEPT_WATCH: [number, number, number][] = [
+  [64, 68, 2e-4],
+  [124, 140, 2e-4],
+  [144, 184, 1e-3],
+  [185, 186, 2e-4],
+  [188, 188 + MAX_CLEARINGS + 1, 2e-4],
+];
 const FRAME_SIZE = 880;
 const LIGHT_BLOCKS = 4 * 3 * 2;
 const BLOOM_LEVELS = 6;
@@ -120,6 +139,7 @@ export class Renderer {
   private readonly lightsBuf: GPUBuffer;
   private vertexBuf: GPUBuffer;
   private vertexCount: number;
+  private stillCount: number; // the scene's vertices that stand still come first (see splitScene)
   /** Where the furniture that turns see-through is, and how see-through each piece is now (0..1). */
   private clearings: Clearings;
   private readonly fades = new Float32Array(MAX_CLEARINGS + 1);
@@ -164,6 +184,16 @@ export class Renderer {
   private readonly lightsPipeline: GPUComputePipeline;
   private readonly lightFieldPipeline: GPUComputePipeline;
   private readonly scenePipeline: GPURenderPipeline;
+  // What the still part of the scene is made of (albedo and spec, normal and gloss, its own light),
+  // and how far away it is, worked out when the eye moves (or the sky has turned a little) and lit
+  // afresh each frame (relight.wgsl): the materials are most of the cost of drawing a room.
+  private readonly keepPipeline: GPURenderPipeline;
+  private readonly relightPipeline: GPURenderPipeline;
+  private relightGroup: GPUBindGroup | null = null;
+  private kept: { albedo: GPUTexture; normal: GPUTexture; emission: GPUTexture; depth: GPUTexture } | null = null;
+  private keptFresh = false;
+  private readonly keptView = new Float32Array(16);
+  private readonly keptFrame = new Float32Array(FRAME_SIZE / 4);
   private readonly logPipeline: GPURenderPipeline;
   private readonly volumePipeline: GPURenderPipeline;
   private readonly downKarisPipeline: GPURenderPipeline;
@@ -216,9 +246,11 @@ export class Renderer {
 
     this.lightsBuf = device.createBuffer({ label: 'fire lights', size: LIGHT_BLOCKS * 32, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
 
-    const { vertices: verts, clearings } = buildScene(logs.room, detail);
-    this.clearings = clearings;
+    const built = buildScene(logs.room, detail);
+    const { vertices: verts, still } = splitScene(built.vertices);
+    this.clearings = built.clearings;
     this.vertexCount = verts.length / VERTEX_FLOATS;
+    this.stillCount = still;
     this.vertexBuf = device.createBuffer({ label: 'scene vertices', size: verts.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
     device.queue.writeBuffer(this.vertexBuf, 0, verts);
 
@@ -272,28 +304,65 @@ export class Renderer {
 
     const depthStencil: GPUDepthStencilState = { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: 'less' };
     const sceneModule = module('scene', frameSrc, commonSrc, lightingSrc, sceneSrc, furnishingsSrc);
+    // (One layout for drawing the scene lit and for keeping what it is made of, so that one bind
+    // group serves both.)
+    const V = GPUShaderStage.VERTEX;
+    const FR = GPUShaderStage.FRAGMENT;
+    const sceneLayout = device.createPipelineLayout({
+      bindGroupLayouts: [
+        device.createBindGroupLayout({
+          label: 'scene',
+          entries: [
+            { binding: 0, visibility: V | FR, buffer: { type: 'uniform' } },
+            { binding: 1, visibility: V | FR, sampler: { type: 'filtering' } },
+            { binding: 2, visibility: FR, texture: { sampleType: 'float', viewDimension: '3d' } },
+            { binding: 3, visibility: FR, buffer: { type: 'read-only-storage' } },
+            { binding: 4, visibility: FR, buffer: { type: 'read-only-storage' } },
+            { binding: 5, visibility: V | FR, texture: { sampleType: 'float' } },
+          ],
+        }),
+      ],
+    });
+    const sceneVertex: GPUVertexState = {
+      module: sceneModule,
+      entryPoint: 'vs',
+      buffers: [
+        {
+          arrayStride: VERTEX_FLOATS * 4,
+          attributes: [
+            { shaderLocation: 0, offset: 0, format: 'float32x3' },
+            { shaderLocation: 1, offset: 12, format: 'float32x3' },
+            { shaderLocation: 2, offset: 24, format: 'float32x2' },
+            { shaderLocation: 3, offset: 32, format: 'float32' },
+            { shaderLocation: 4, offset: 36, format: 'float32x3' },
+          ],
+        },
+      ],
+    };
     this.scenePipeline = device.createRenderPipeline({
       label: 'scene',
-      layout: 'auto',
-      vertex: {
-        module: sceneModule,
-        entryPoint: 'vs',
-        buffers: [
-          {
-            arrayStride: VERTEX_FLOATS * 4,
-            attributes: [
-              { shaderLocation: 0, offset: 0, format: 'float32x3' },
-              { shaderLocation: 1, offset: 12, format: 'float32x3' },
-              { shaderLocation: 2, offset: 24, format: 'float32x2' },
-              { shaderLocation: 3, offset: 32, format: 'float32' },
-              { shaderLocation: 4, offset: 36, format: 'float32x3' },
-            ],
-          },
-        ],
-      },
+      layout: sceneLayout,
+      vertex: sceneVertex,
       fragment: { module: sceneModule, entryPoint: 'fs', targets: [{ format: HDR_FORMAT }] },
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil,
+    });
+    this.keepPipeline = device.createRenderPipeline({
+      label: 'scene kept',
+      layout: sceneLayout,
+      vertex: sceneVertex,
+      fragment: { module: sceneModule, entryPoint: 'fsKeep', targets: [{ format: KEPT_FORMAT }, { format: KEPT_NORMAL_FORMAT }, { format: KEPT_FORMAT }] },
+      primitive: { topology: 'triangle-list', cullMode: 'none' },
+      depthStencil,
+    });
+    const relightModule = module('relight', frameSrc, commonSrc, lightingSrc, relightSrc);
+    this.relightPipeline = device.createRenderPipeline({
+      label: 'relight',
+      layout: 'auto',
+      vertex: { module: relightModule, entryPoint: 'vs' },
+      fragment: { module: relightModule, entryPoint: 'fs', targets: [{ format: HDR_FORMAT }] },
+      primitive: { topology: 'triangle-list' },
+      depthStencil: { format: DEPTH_FORMAT, depthWriteEnabled: true, depthCompare: 'always' },
     });
 
     const logModule = module('logs', frameSrc, commonSrc, logsSharedSrc, lightingSrc, logsSrc);
@@ -613,10 +682,32 @@ export class Renderer {
       const t = this.targets;
       for (const tex of [t.scene, t.depth, t.volume, t.heat, t.hdr, ...t.history, ...t.bloom]) tex.destroy();
     }
+    if (this.kept) for (const tex of Object.values(this.kept)) tex.destroy();
     const usage = GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING;
     const target = (label: string, format: GPUTextureFormat) => this.device.createTexture({ label, size: [width, height], format, usage });
     const scene = target('scene', HDR_FORMAT);
     const depth = target('depth', DEPTH_FORMAT);
+    const kept = {
+      albedo: target('kept albedo', KEPT_FORMAT),
+      normal: target('kept normal', KEPT_NORMAL_FORMAT),
+      emission: target('kept emission', KEPT_FORMAT),
+      depth: target('kept depth', DEPTH_FORMAT),
+    };
+    this.kept = kept;
+    this.keptFresh = false;
+    this.relightGroup = this.device.createBindGroup({
+      label: 'relight',
+      layout: this.relightPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: { buffer: this.frameBuf } },
+        { binding: 1, resource: { buffer: this.bbBuf } },
+        { binding: 2, resource: { buffer: this.lightsBuf } },
+        { binding: 3, resource: kept.albedo.createView() },
+        { binding: 4, resource: kept.normal.createView() },
+        { binding: 5, resource: kept.emission.createView() },
+        { binding: 6, resource: kept.depth.createView() },
+      ],
+    });
     const volume = target('fire', HDR_FORMAT);
     const heat = target('heat', HEAT_FORMAT);
     const history = [target('fire history A', HDR_FORMAT), target('fire history B', HDR_FORMAT)];
@@ -711,14 +802,17 @@ export class Renderer {
   setRoom(detail = this.detail) {
     this.detail = detail;
     this.steam.clear();
-    const { vertices: verts, clearings } = buildScene(this.logs.room, detail, this.kettle);
-    this.clearings = clearings;
+    const built = buildScene(this.logs.room, detail, this.kettle);
+    const { vertices: verts, still } = splitScene(built.vertices);
+    this.clearings = built.clearings;
     this.fades.fill(0);
     this.vertexBuf.destroy();
     this.vertexCount = verts.length / VERTEX_FLOATS;
+    this.stillCount = still;
     this.vertexBuf = this.device.createBuffer({ label: 'scene vertices', size: verts.byteLength, usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST });
     this.device.queue.writeBuffer(this.vertexBuf, 0, verts);
     this.historyValid = false;
+    this.keptFresh = false;
   }
 
   /** What moves about outside the logs: the tool in hand (if any), firelighters, creatures. */
@@ -738,7 +832,7 @@ export class Renderer {
     const sim = this.sim;
     const t = this.targets;
     const field = this.lightField;
-    if (!sim || !t || !field || !this.lightsGroup || !this.lightFieldGroup || !this.sceneGroup || !this.volumeGroups.length || !this.compositeGroup) return;
+    if (!sim || !t || !field || !this.lightsGroup || !this.lightFieldGroup || !this.sceneGroup || !this.relightGroup || !this.volumeGroups.length || !this.compositeGroup) return;
     this.frameIndex++;
     // Smooth the fire over frames only while the camera holds still.
     const moved = camera.viewProj.some((v, i) => Math.abs(v - this.lastViewProj[i]) > 1e-5);
@@ -759,15 +853,28 @@ export class Renderer {
     if (sim.quality.flameDetail) this.carryDetail(cp, sim, time);
     cp.end();
 
-    const scene = enc.beginRenderPass({
-      label: 'scene',
+    // The still part of the scene: what it is made of, if that has changed (the eye has moved...),
+    // then lit afresh; the rest drawn over it.
+    if (this.keptStale(camera)) this.keep(enc, camera);
+    const relight = enc.beginRenderPass({
+      label: 'relight',
       colorAttachments: [{ view: t.scene.createView(), clearValue: [0, 0, 0, 1], loadOp: 'clear', storeOp: 'store' }],
       depthStencilAttachment: { view: t.depth.createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' },
+    });
+    relight.setPipeline(this.relightPipeline);
+    relight.setBindGroup(0, this.relightGroup);
+    relight.draw(3);
+    relight.end();
+
+    const scene = enc.beginRenderPass({
+      label: 'scene',
+      colorAttachments: [{ view: t.scene.createView(), loadOp: 'load', storeOp: 'store' }],
+      depthStencilAttachment: { view: t.depth.createView(), depthLoadOp: 'load', depthStoreOp: 'store' },
     });
     scene.setPipeline(this.scenePipeline);
     scene.setBindGroup(0, this.sceneGroup);
     scene.setVertexBuffer(0, this.vertexBuf);
-    scene.draw(this.vertexCount);
+    scene.draw(this.vertexCount - this.stillCount, 1, this.stillCount);
     if (this.propVertexCount > 0) {
       scene.setVertexBuffer(0, this.propBuf);
       scene.draw(this.propVertexCount);
@@ -786,7 +893,7 @@ export class Renderer {
     scene.setPipeline(this.logPipeline);
     scene.setBindGroup(0, this.logGroup);
     scene.setVertexBuffer(0, this.logTemplateBuf);
-    scene.draw(this.logVertexCount, LOG_GRID.maxLogs);
+    scene.draw(this.logVertexCount, this.logs.slotsInUse);
     scene.end();
 
     const vol = enc.beginRenderPass({
@@ -888,6 +995,40 @@ export class Renderer {
     }
 
     this.device.queue.submit([enc.finish()]);
+  }
+
+  /**
+   * Whether what the still part of the scene is made of must be worked out again: the eye has
+   * moved, or something its materials show has changed (furniture fading out of the way, the time
+   * of day, the Moon, the sky turned a little further round; a new room: see setRoom).
+   */
+  private keptStale(camera: Camera): boolean {
+    if (!this.keptFresh || camera.viewProj.some((v, i) => v !== this.keptView[i])) return true;
+    const f = new Float32Array(this.frameData);
+    const kept = this.keptFrame;
+    return KEPT_WATCH.some(([from, to, within]) => {
+      for (let i = from; i < to; i++) if (Math.abs(f[i] - kept[i]) > within) return true;
+      return false;
+    });
+  }
+
+  /** Works out what the still part of the scene is made of, as the eye sees it now (for relight.wgsl). */
+  private keep(enc: GPUCommandEncoder, camera: Camera) {
+    const k = this.kept;
+    if (!k || !this.sceneGroup) return;
+    const pass = enc.beginRenderPass({
+      label: 'scene kept',
+      colorAttachments: [k.albedo, k.normal, k.emission].map((tex) => ({ view: tex.createView(), clearValue: [0, 0, 0, 0], loadOp: 'clear' as const, storeOp: 'store' as const })),
+      depthStencilAttachment: { view: k.depth.createView(), depthClearValue: 1, depthLoadOp: 'clear', depthStoreOp: 'store' },
+    });
+    pass.setPipeline(this.keepPipeline);
+    pass.setBindGroup(0, this.sceneGroup);
+    pass.setVertexBuffer(0, this.vertexBuf);
+    pass.draw(this.stillCount);
+    pass.end();
+    this.keptView.set(camera.viewProj);
+    this.keptFrame.set(new Float32Array(this.frameData));
+    this.keptFresh = true;
   }
 
   /**

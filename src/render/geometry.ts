@@ -87,6 +87,31 @@ export const MAX_CLEARINGS = 31;
 const VOXEL = 0.08; // m: the grid on which they are known
 
 /**
+ * Materials whose look changes from frame to frame (as the time passes, the coals burn, the
+ * candles flicker, the lamps are dimmed): drawn and lit afresh every frame. What the rest is made
+ * of is worked out once and kept while the eye holds still (see Renderer.ts).
+ */
+const CHANGING: ReadonlySet<number> = new Set([MAT.embers, MAT.wax, MAT.flame, MAT.shade, MAT.glass, MAT.jar, MAT.clockFace, MAT.fur]);
+
+/** A scene's triangles, those that stand still first; `still` is how many vertices they take. */
+export function splitScene(vertices: Float32Array): { vertices: Float32Array; still: number } {
+  const size = VERTEX_FLOATS * 3;
+  const count = vertices.length / size;
+  const out = new Float32Array(vertices.length);
+  let at = 0;
+  let still = 0;
+  for (const changing of [false, true]) {
+    for (let i = 0; i < count; i++) {
+      if (CHANGING.has(Math.round(vertices[i * size + 8]) % SEE_THROUGH) !== changing) continue;
+      out.set(vertices.subarray(i * size, (i + 1) * size), at);
+      at += size;
+    }
+    if (!changing) still = at / VERTEX_FLOATS;
+  }
+  return { vertices: out, still };
+}
+
+/**
  * Where the things that turn see-through are, as the cells of a coarse grid their surfaces pass
  * through, each holding the thing's number: a line of sight stepped through it finds what stands
  * in the way.

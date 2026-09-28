@@ -638,6 +638,12 @@ export class LogSystem {
     this.device.queue.writeBuffer(this.stepBuffer, 0, this.stepData);
   }
 
+  /** How many of the log slots are worth going over: up to the highest in use. */
+  get slotsInUse(): number {
+    for (let i = MAX - 1; i >= 0; i--) if (this.logs[i]) return i + 1;
+    return 0;
+  }
+
   /**
    * Advances the log interiors by one solver step (encoded before the gas passes), or, at a quality
    * that works them out less often, by several at once every so many steps.
@@ -646,13 +652,7 @@ export class LogSystem {
     if (!this.surfaceStages.length) return;
     if (this.ticks++ % this.every) return;
     // Only over the slots in use (up to the highest), not all of them.
-    let live = 0;
-    for (let i = MAX - 1; i >= 0; i--) {
-      if (this.logs[i]) {
-        live = i + 1;
-        break;
-      }
-    }
+    const live = this.slotsInUse;
     const slots = Math.max(live, this.covered);
     this.covered = live;
     for (let i = 0; slots > 0 && i < this.substeps; i++) {

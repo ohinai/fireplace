@@ -575,6 +575,7 @@ async function start() {
         renderer.setProps(tools.view(), logs.lighterViews(), critters.views(fireLevel()));
         renderer.render(camera, params, sim.time);
       },
+      renderer,
       camera,
       adaptation: () => renderer.readAdaptation(),
       setRoom,

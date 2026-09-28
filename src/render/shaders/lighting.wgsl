@@ -17,7 +17,9 @@ fn openingTop(x: f32) -> f32 {
 fn throughOpening(p: vec3<f32>, lp: vec3<f32>) -> f32 {
   if (F.opening.x <= 0.0) { return 1.0; }
   let lightInside = lp.z < 0.0;
-  if (lightInside && p.z <= 0.0) { return 1.0; }
+  // (A millimetre's leeway: the wall face round the opening lies in the plane z = 0, and where a
+  // point on it is worked out from the depth buffer (relight.wgsl) it can land a hair either side.)
+  if (lightInside && p.z <= 0.001) { return 1.0; }
   if (!lightInside && p.z > -0.01) { return 1.0; }
   let c = mix(p, lp, p.z / (p.z - lp.z));
   let inside = min(F.opening.x - abs(c.x), min(c.y, openingTop(c.x) - c.y));
@@ -63,7 +65,9 @@ fn outsideLight(p: vec3<f32>, N: vec3<f32>) -> vec3<f32> {
   let hemi = F.sky.rgb * (0.55 + 0.45 * N.y);
   let direct = F.sunColour.rgb * max(dot(N, F.sun.xyz), 0.0);
   var cavity = 1.0;
-  if (F.opening.x > 0.0 && p.z < 0.0 && abs(p.x) < 0.5 && p.y < 0.9) {
+  // (Behind the plane of the opening by a millimetre: the wall face round it, in that plane, is
+  // outside however its position is worked out; see throughOpening.)
+  if (F.opening.x > 0.0 && p.z < -0.001 && abs(p.x) < 0.5 && p.y < 0.9) {
     cavity = mix(0.06, 0.6, smoothstep(-0.4, 0.0, p.z));
   }
   return (hemi + direct) * cavity;
@@ -115,4 +119,43 @@ fn shade(p: vec3<f32>, N: vec3<f32>, albedo: vec3<f32>, spec: f32, gloss: f32, e
     bounce += lc * mix(0.02, 0.15 * F.opening.w, inRoom) / (1.0 + dot(fromLamp, fromLamp) / spread);
   }
   return albedo / PI * (lit.diffuse + bounce) + albedo * outsideLight(p, N) + spec * lit.specular / PI + emission;
+}
+
+// The sky's own light in direction d, without the Moon's disc or the Milky Way: a dark night sky,
+// brighter and bluer by moonlight; the last light low where the Sun has set at dusk; blue by day.
+// (It is also what far-off hills and mountains fade toward.)
+fn skyGradient(d: vec3<f32>) -> vec3<f32> {
+  let up = max(d.y, 0.0);
+  let tod = F.sun.w;
+  let sunDir = F.sunDir.xyz;
+  var col: vec3<f32>;
+  if (tod < 0.5) {
+    col = mix(vec3<f32>(0.0016, 0.0022, 0.0042), vec3<f32>(0.0005, 0.0008, 0.0019), pow(up, 0.5));
+    // Airglow: a faint green-grey band low down on a dark night.
+    col += vec3<f32>(0.0004, 0.0007, 0.0004) * smoothstep(0.3, 0.0, up) * (1.0 - F.skyLook.z);
+  } else if (tod < 1.5) {
+    let toward = pow(max(dot(normalize(vec3<f32>(d.x, 0.0, d.z)), normalize(vec3<f32>(sunDir.x, 0.0, sunDir.z) + vec3<f32>(1e-5, 0.0, 0.0))), 0.0), 3.0);
+    let horizon = mix(vec3<f32>(0.012, 0.014, 0.028), vec3<f32>(0.06, 0.028, 0.012), toward);
+    col = mix(horizon, vec3<f32>(0.004, 0.008, 0.026), pow(up, 0.45));
+  } else {
+    col = mix(vec3<f32>(0.26, 0.3, 0.34), vec3<f32>(0.07, 0.13, 0.3), pow(up, 0.6));
+    col += vec3<f32>(1.0, 0.9, 0.7) * 0.4 * pow(max(dot(d, sunDir), 0.0), 64.0);
+  }
+  // By moonlight the whole sky is lighter and bluer, most of all round the Moon. (Less so with
+  // the starlight brought out: a deeper sky for the stars to show against.)
+  let glow = F.skyLook.z * (1.0 - 0.3 * F.grade.y);
+  col += glow * (vec3<f32>(0.0035, 0.0055, 0.011) * (0.7 + 0.3 * up) + vec3<f32>(0.005, 0.007, 0.011) * pow(max(dot(d, F.moon.xyz), 0.0), 6.0));
+  return col;
+}
+
+// A surface as the eye sees it: lit, and out in the open, faded into the sky with distance (the
+// far hills and the mountain).
+fn seen(p: vec3<f32>, N: vec3<f32>, albedo: vec3<f32>, spec: f32, gloss: f32, emission: vec3<f32>) -> vec3<f32> {
+  var colour = shade(p, N, albedo, spec, gloss, emission);
+  if (F.opening.x <= 0.0) {
+    let away = p - F.camPos;
+    let haze = 1.0 - exp(-max(length(away) - 20.0, 0.0) / 380.0);
+    colour = mix(colour, skyGradient(normalize(away)), haze);
+  }
+  return colour;
 }

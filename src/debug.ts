@@ -5,7 +5,7 @@ import type { Detail } from './config';
 import type { Critters } from './critters';
 import type { Params } from './config';
 import type { FireMode } from './layouts';
-import type { Lighting } from './render/Renderer';
+import type { Lighting, Renderer } from './render/Renderer';
 import type { RoomKey } from './rooms';
 import type { Blow, FireSim } from './sim/FireSim';
 import type { LogSystem } from './sim/LogSystem';
@@ -24,6 +24,7 @@ interface DebugHooks {
   startOver: () => void;
   stepWorld: (dt: number, blow?: Blow | null) => void;
   render: () => void;
+  renderer: Renderer;
   camera: Camera;
   adaptation: () => Promise<[number, number]>;
   setRoom: (key: RoomKey) => void;
@@ -46,6 +47,7 @@ interface DebugHooks {
  *   fire.embers()               skips ahead to a bed of ashy embers, the flames gone
  *   fire.critters               the night's fireflies, moths, bats and eyes
  *   fire.system                 the log system itself, for poking at its GPU buffers
+ *   fire.renderer               the renderer itself (what it keeps of the still scene...)
  *   fire.look({ target, distance, yaw, pitch }), fire.view('chair')   points the camera and draws a frame
  *   fire.setDetail('high')      how much furniture and scenery there is
  */
@@ -55,6 +57,7 @@ export function installDebug(h: DebugHooks) {
     params,
     startOver: h.startOver,
     render: h.render,
+    renderer: h.renderer,
     camera: h.camera,
     tools: h.tools,
     audio: h.audio,

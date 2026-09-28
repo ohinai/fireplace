@@ -625,33 +625,6 @@ fn moonDisc(d: vec3<f32>) -> vec3<f32> {
   return (vec3<f32>(1.0, 0.97, 0.9) * 1.8 * albedo * (shade + earthshine)) * edge + halo;
 }
 
-// The sky's own light in direction d, without the Moon's disc or the Milky Way: a dark night sky,
-// brighter and bluer by moonlight; the last light low where the Sun has set at dusk; blue by day.
-// (It is also what far-off hills and mountains fade toward.)
-fn skyGradient(d: vec3<f32>) -> vec3<f32> {
-  let up = max(d.y, 0.0);
-  let tod = F.sun.w;
-  let sunDir = F.sunDir.xyz;
-  var col: vec3<f32>;
-  if (tod < 0.5) {
-    col = mix(vec3<f32>(0.0016, 0.0022, 0.0042), vec3<f32>(0.0005, 0.0008, 0.0019), pow(up, 0.5));
-    // Airglow: a faint green-grey band low down on a dark night.
-    col += vec3<f32>(0.0004, 0.0007, 0.0004) * smoothstep(0.3, 0.0, up) * (1.0 - F.skyLook.z);
-  } else if (tod < 1.5) {
-    let toward = pow(max(dot(normalize(vec3<f32>(d.x, 0.0, d.z)), normalize(vec3<f32>(sunDir.x, 0.0, sunDir.z) + vec3<f32>(1e-5, 0.0, 0.0))), 0.0), 3.0);
-    let horizon = mix(vec3<f32>(0.012, 0.014, 0.028), vec3<f32>(0.06, 0.028, 0.012), toward);
-    col = mix(horizon, vec3<f32>(0.004, 0.008, 0.026), pow(up, 0.45));
-  } else {
-    col = mix(vec3<f32>(0.26, 0.3, 0.34), vec3<f32>(0.07, 0.13, 0.3), pow(up, 0.6));
-    col += vec3<f32>(1.0, 0.9, 0.7) * 0.4 * pow(max(dot(d, sunDir), 0.0), 64.0);
-  }
-  // By moonlight the whole sky is lighter and bluer, most of all round the Moon. (Less so with
-  // the starlight brought out: a deeper sky for the stars to show against.)
-  let glow = F.skyLook.z * (1.0 - 0.3 * F.grade.y);
-  col += glow * (vec3<f32>(0.0035, 0.0055, 0.011) * (0.7 + 0.3 * up) + vec3<f32>(0.005, 0.007, 0.011) * pow(max(dot(d, F.moon.xyz), 0.0), 6.0));
-  return col;
-}
-
 // The sky seen through the dome, with the Milky Way and the Moon (the stars are drawn over it:
 // stars.wgsl). The Sun, Moon and Milky Way are where they really are.
 fn sky(d: vec3<f32>) -> vec3<f32> {
@@ -851,19 +824,26 @@ fn matchHead(uv: vec2<f32>) -> Surface {
   return Surface(col, vec3<f32>(0.0), 0.2, 20.0);
 }
 
-@fragment
-fn fs(in: VOut) -> @location(0) vec4<f32> {
+// What is seen at a point on a surface: which way it faces and what it is made of; or light of its
+// own that nothing lights (the sky, a glowing dot).
+struct Look {
+  N: vec3<f32>,
+  s: Surface,
+  unlit: bool,
+};
+
+fn lookAt(in: VOut) -> Look {
   let p = in.wpos;
   if (in.clear > 0u && seeThrough(in.clear, in.clip.xy, p)) { discard; }
   if (in.mat == MAT_SKY) {
-    return vec4<f32>(sky(normalize(p - F.camPos)), 1.0);
+    return Look(vec3<f32>(0.0), Surface(vec3<f32>(0.0), sky(normalize(p - F.camPos)), 0.0, 1.0), true);
   }
   if (in.mat == MAT_GLOW) {
     // A firefly's cold yellow-green light, or eyes shining back the firelight.
     let d2 = dot(in.uv, in.uv);
     if (d2 > 1.0) { discard; }
     let tint = select(vec3<f32>(0.55, 1.0, 0.18) * 60.0, vec3<f32>(0.85, 1.0, 0.55) * 8.0, in.nrm.y > 0.5);
-    return vec4<f32>(tint * in.nrm.x * (1.0 - d2) * (1.0 - d2), 1.0);
+    return Look(vec3<f32>(0.0), Surface(vec3<f32>(0.0), tint * in.nrm.x * (1.0 - d2) * (1.0 - d2), 0.0, 1.0), true);
   }
   // (A normal worn down to nothing, where a surface pinches to a point, would come out NaN, and
   // the bloom would spread that into a black block across the screen: face it to the eye instead.)
@@ -970,12 +950,34 @@ fn fs(in: VOut) -> @location(0) vec4<f32> {
     case MAT_MATCH_HEAD: { s = matchHead(in.uv); }
     default: { s = Surface(vec3<f32>(0.5), vec3<f32>(0.0), 0.0, 1.0); }
   }
-  var colour = shade(p, N, s.albedo, s.spec, s.gloss, s.emission);
-  if (F.opening.x <= 0.0) {
-    // Out in the open, the far hills and the mountain fade into the sky behind them.
-    let away = p - F.camPos;
-    let haze = 1.0 - exp(-max(length(away) - 20.0, 0.0) / 380.0);
-    colour = mix(colour, skyGradient(normalize(away)), haze);
-  }
-  return vec4<f32>(colour, 1.0);
+  return Look(N, s, false);
+}
+
+// Drawn and lit afresh every frame: what changes from moment to moment (the coals, candle flames
+// and the wax they light, lamps, the clock, a cat breathing: see Renderer.ts) and what is carried
+// or moves about.
+@fragment
+fn fs(in: VOut) -> @location(0) vec4<f32> {
+  let l = lookAt(in);
+  if (l.unlit) { return vec4<f32>(l.s.emission, 1.0); }
+  return vec4<f32>(seen(in.wpos, l.N, l.s.albedo, l.s.spec, l.s.gloss, l.s.emission), 1.0);
+}
+
+// The rest stands still: what it is made of (the costly part: brick, grain, weave, the sky) is
+// worked out only when the eye moves or the sky has turned a little, kept, and lit afresh each
+// frame from what was kept (relight.wgsl).
+struct Kept {
+  @location(0) albedo: vec4<f32>, // w: spec
+  @location(1) normal: vec4<f32>, // w: gloss
+  @location(2) emission: vec4<f32>, // w: 1 if unlit
+};
+
+@fragment
+fn fsKeep(in: VOut) -> Kept {
+  let l = lookAt(in);
+  var k: Kept;
+  k.albedo = vec4<f32>(l.s.albedo, l.s.spec);
+  k.normal = vec4<f32>(l.N, l.s.gloss);
+  k.emission = vec4<f32>(l.s.emission, select(0.0, 1.0, l.unlit));
+  return k;
 }
