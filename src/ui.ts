@@ -330,6 +330,8 @@ export function createUI(
   const creditsSummary = document.createElement('summary');
   creditsSummary.textContent = 'Credits';
   const list = document.createElement('ul');
+  const author = document.createElement('b');
+  author.textContent = 'Omar Al-Hinai';
   const cat = document.createElement('b');
   cat.textContent = 'Macaroni';
   const book = document.createElement('i');
@@ -337,13 +339,14 @@ export function createUI(
   const charts = document.createElement('i');
   charts.textContent = 'Sky & Telescope';
   for (const parts of [
+    ['Made by ', author],
     ['The cat by the hearth: ', cat],
     ['Physics: ', link('Rapier', 'https://rapier.rs'), ' by Dimforge (', link('Apache License 2.0', 'https://www.apache.org/licenses/LICENSE-2.0'), ')'],
     ['Stars: the ', link('Yale Bright Star Catalogue', 'https://cdsarc.cds.unistra.fr/viz-bin/cat/V/50'), ', 5th revised edition (Hoffleit & Warren, 1991), from the CDS, Strasbourg'],
     ['The Sun, the Moon and the turning sky: after Jean Meeus, ', book],
     ['The planets: ', link('JPL’s approximate positions', 'https://ssd.jpl.nasa.gov/planets/approx_pos.html'), ' (E. M. Standish), their brightness after Mallama & Hilton (2018)'],
     ['Constellation figures after the IAU and ', charts, ' charts'],
-    ['Made with WebGPU, TypeScript and Vite'],
+    ['Coded with Claude Opus 5.5 (Anthropic), in WebGPU, TypeScript and Vite'],
   ]) {
     const item = document.createElement('li');
     item.append(...parts);

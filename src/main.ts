@@ -821,11 +821,14 @@ async function start() {
       const fps = (1000 / frameTimeAvg).toFixed(0);
       const coals = `${logs.bed.totalMass.toFixed(2)} kg` + (glowT === null ? '' : ` at ${Math.round(glowT - 273)} °C`);
       ui.setStats(`${fps} fps · ${nx}×${ny}×${nz} grid · ${logs.count} logs · coals ${coals}` + (kettle ? ` · kettle ${kettleText(kettle)}` : ''));
+      const cells = nx * ny * nz;
+      const co2 = logs.co2 < 1 ? `${Math.round(logs.co2 * 1000)} g` : `${logs.co2.toFixed(2)} kg`;
       ui.setReadouts([
-        `Grid: ${nx} × ${ny} × ${nz} cells of ${(sim.h * 1000).toFixed(1)} mm (${Math.round((nx * ny * nz) / 1000)} thousand)`,
+        `Grid: ${nx} × ${ny} × ${nz} cells of ${(sim.h * 1000).toFixed(1)} mm (${cells < 1e6 ? `${Math.round(cells / 1000)} thousand` : `${(cells / 1e6).toFixed(1)} million`})`,
         `Flames radiate ${(sim.flamePower / 1000).toFixed(1)} kW`,
         `Coals: ${coals}`,
         `On the fire: ${logs.count} ${logs.count === 1 ? 'piece' : 'pieces'} of wood`,
+        `CO₂ given off (an estimate): ${co2} so far, ${(logs.co2Rate * 3600).toFixed(1)} kg an hour now`,
         ...(kettle ? [`Kettle: ${kettleText(kettle)} (boils at ${(kettle.boilingPoint - 273.15).toFixed(1)} °C)`] : []),
         `Gravity: ${params.gravity.toFixed(2)} m/s²`,
         `${fps} frames a second`,

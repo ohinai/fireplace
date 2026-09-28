@@ -122,7 +122,10 @@ Relief Fund ([pcrf.net/donate](https://www.pcrf.net/donate)).
   takes the new moisture (a burning log then reads a little under the setting). The logs you lay
   with Start over, or put on, are that wet right through. Kindling is kept dry.
 - **Readings:** the grid, the power the flames radiate, the coals, the pieces of wood on the
-  fire, the kettle, gravity, frames a second. **Back to Earth** puts all of it back. Add `?quality=low|medium|high|ultra` to the URL to skip
+  fire, an estimate of the CO₂ the fire has given off (so far, and at the rate it burns now:
+  from the carbon in the wood gas, the char and the firelighters it has burnt; dry wood is about
+  half carbon, and each kilogram of carbon makes 3.7 kg of CO₂), the kettle, gravity, frames a
+  second. **Back to Earth** puts all of it back. Add `?quality=low|medium|high|ultra` to the URL to skip
 automatic quality selection, `?room=` to pick the room and `?fire=cold` to start with a cold
 fire.
 
@@ -527,6 +530,7 @@ fire.tools.down([x, y]); fire.tools.move([x, y]); fire.tools.up();  // use the t
 
 ## Credits
 
+- Made by **Omar Al-Hinai**.
 - The cat by the hearth: **Macaroni**.
 - Physics: [Rapier](https://rapier.rs), by Dimforge
   ([Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)).
@@ -536,7 +540,7 @@ fire.tools.down([x, y]); fire.tools.move([x, y]); fire.tools.up();  // use the t
 - The planets: [JPL's approximate positions](https://ssd.jpl.nasa.gov/planets/approx_pos.html)
   (E. M. Standish); their brightness after Mallama & Hilton (2018).
 - Constellation figures after the IAU and *Sky & Telescope* charts.
-- Made with WebGPU, TypeScript and Vite.
+- Coded with Claude Opus 5.5 (Anthropic), in WebGPU, TypeScript and Vite.
 
 If the fire warms you, please give to the
 [Palestine Children's Relief Fund](https://www.pcrf.net/donate).

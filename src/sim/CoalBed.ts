@@ -54,6 +54,8 @@ export class CoalBed {
   readonly deposit = new Float32Array(BED_N * BED_N); // kg/s landing from glowing logs above
   readonly heat = new Float32Array(BED_N * BED_N); // W/m2 arriving from logs and flames above
   readonly ash = new Float32Array(BED_N * BED_N); // 0..1 how much of the coals ash covers
+  /** kg/s of coals burning away, all told, as of the last update. */
+  burning = 0;
   private readonly blowing = new Float32Array(BED_N * BED_N); // 0..1
   private readonly scratch = new Float32Array(BED_N * BED_N);
   private readonly halves = new Uint16Array(BED_N * BED_N * 4);
@@ -198,6 +200,7 @@ export class CoalBed {
     const Ta4 = Ta ** 4;
     const env = Math.max(envTemp ** 4 - Ta4, 0) * 0.5;
     const n = BED_N * BED_N;
+    this.burning = 0;
     for (let k = 0; k < n; k++) {
       const m = this.mass[k];
       const sigma = m / this.cellArea;
@@ -207,6 +210,7 @@ export class CoalBed {
       const hot = smoothstep(650, 950, T + this.flare[k]);
       const ash = this.ash[k];
       const burn = m * BURN * hot * (1 + 2 * blow) * (1 - ASH_SLOWS * ash);
+      this.burning += burn;
       const fresh = this.deposit[k] * dtLog;
       this.mass[k] = Math.max(0, m + fresh - burn * dtLog);
       // Burning coals skin over with ash; fresh glowing char landing on them, or a draught

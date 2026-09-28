@@ -36,6 +36,16 @@ const READBACK_ROW = Math.ceil((NS * 8) / 256) * 256; // bytes per row of a surf
 const SIGMA = 5.67e-8;
 const CHAR_SHED = 0.002; // kg/s of glowing char flaking off each m2 of glowing surface
 const SKY_TEMP = 255; // K: what a clear night sky radiates like
+// For the estimate of the CO2 a fire gives off (co2): dry wood is about half carbon, and the char
+// left when its gas is driven off about four fifths; the wood gas carries the rest. Each kg of
+// carbon burnt makes 44/12 kg of CO2 (what leaves as CO or soot the air turns to CO2 in time).
+// Firelighters are mostly paraffin, about 85% carbon.
+const WOOD_CARBON = 0.5;
+const CHAR_CARBON = 0.8;
+const CO2_PER_CARBON = 44 / 12;
+const CO_PER_CHAR = 1.17; // kg of CO per kg of char burnt, as the flux map gives it (log_physics.wgsl)
+const PARAFFIN_CARBON = 0.85;
+const PARAFFIN_HEAT = 4.3e7; // J/kg
 // Firelighters: paraffin and wood-fibre cubes that burn with a steady flame for several minutes.
 export const LIGHTER = { size: 0.028, height: 0.02, burn: 600, power: 1200, radius: 0.017, temp: 1150 };
 // A long fireplace match.
@@ -99,6 +109,7 @@ interface Log {
   maxTemp: number;
   charFrac: number; // share of its surface that is char
   gasRate: number; // kg/s of wood gas given off
+  charRate: number; // kg/s of char burning on its surface
   steamRate: number; // kg/s of steam
   lastKnock: number; // time of the last poke or impact that made a sound
 }
@@ -142,6 +153,9 @@ export class LogSystem {
   /** Radiation blocks of the flames (xyz position, w power in W), as last read back. */
   flames: Float32Array | null = null;
   private flameGain = 1; // (Params.flameRadiation)
+  /** An estimate of the CO2 this fire has given off so far (kg), and is giving off now (kg/s of the logs' time). */
+  co2 = 0;
+  co2Rate = 0;
 
   /** A log hit something (landed, was dropped, was poked). */
   onKnock?: (knock: Knock) => void;
@@ -319,6 +333,8 @@ export class LogSystem {
     this.logs.fill(null);
     this.match = null;
     this.flames = null;
+    this.co2 = 0;
+    this.co2Rate = 0;
     const layout = layFire(this.room, this.mode);
     this.wallTemp = layout.walls;
     this.activity = 0;
@@ -698,6 +714,16 @@ export class LogSystem {
     this.bed.update(dtLog, frameDt, this.room.enclosure === 'open' ? SKY_TEMP : this.wallTemp);
     this.updateWalls(dtLog);
     this.updateLighters(frameDt, dtLog);
+    // The CO2 given off: the carbon in the wood gas the logs give off (it all burns, in the end),
+    // in the char burning on them and in the coals, and in burning firelighters.
+    let carbon = this.bed.burning * CHAR_CARBON;
+    for (const log of this.live()) {
+      const y = log.wood.charYield;
+      carbon += (log.gasRate * (WOOD_CARBON - CHAR_CARBON * y)) / (1 - y) + log.charRate * CHAR_CARBON;
+    }
+    for (const l of this.lighters) if (l.lit && l.left > 0) carbon += (LIGHTER.power / PARAFFIN_HEAT) * PARAFFIN_CARBON;
+    this.co2Rate = carbon * CO2_PER_CARBON;
+    this.co2 += this.co2Rate * dtLog;
     this.uploadBed();
     this.readbackTimer += frameDt;
     if (this.readbackTimer > 0.25 && !this.reading) {
@@ -840,6 +866,7 @@ export class LogSystem {
       maxTemp: 300,
       charFrac: 0,
       gasRate: 0,
+      charRate: 0,
       steamRate: 0,
       lastKnock: -1,
     };
@@ -1107,6 +1134,7 @@ export class LogSystem {
       let glow = 0;
       let maxT = 0;
       let gas = 0;
+      let char = 0;
       let steam = 0;
       const ds = log.length / NS;
       for (let t = 0; t < NT; t++) {
@@ -1127,6 +1155,7 @@ export class LogSystem {
           if (c > 0.6 && T > 750) glow += area;
           gas += Math.max(halfToFloat(flux[o]), 0) * area;
           steam += Math.max(halfToFloat(flux[o + 1]), 0) * area;
+          char += (Math.max(halfToFloat(flux[o + 2]), 0) / CO_PER_CHAR) * area;
         }
       }
       let sum = 0;
@@ -1146,6 +1175,7 @@ export class LogSystem {
         glowArea: glow,
         maxTemp: maxT,
         gasRate: gas,
+        charRate: char,
         steamRate: steam,
       });
       glowTotal += glow;
