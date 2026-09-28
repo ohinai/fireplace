@@ -14,6 +14,10 @@ it.
 **Light it: [ohinai.github.io/fireplace](https://ohinai.github.io/fireplace/)** (in a browser
 with WebGPU: see *Publishing it* below for which).
 
+![The fire burning on the grate in the brick hearth, lit by wall lamps, with candles on the hearth and the cat asleep on the rug](screenshots/brick-hearth.webp)
+
+![A fire of desert wood burning in the sand beside a Bedouin tent, under the stars](screenshots/desert-camp.webp)
+
 ## Run it
 
 ```bash
