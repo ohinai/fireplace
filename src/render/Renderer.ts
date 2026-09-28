@@ -4,6 +4,8 @@ import lightingSrc from './shaders/lighting.wgsl?raw';
 import lightsSrc from './shaders/lights.wgsl?raw';
 import lightFieldSrc from './shaders/lightfield.wgsl?raw';
 import volumeSrc from './shaders/volume.wgsl?raw';
+import flameNoiseSrc from './shaders/flame_noise.wgsl?raw';
+import flameCoordsSrc from './shaders/flame_coords.wgsl?raw';
 import sceneSrc from './shaders/scene.wgsl?raw';
 import furnishingsSrc from './shaders/furnishings.wgsl?raw';
 import starsSrc from './shaders/stars.wgsl?raw';
@@ -41,6 +43,11 @@ const LIGHT_BLOCKS = 4 * 3 * 2;
 const BLOOM_LEVELS = 6;
 const LIGHT_FIELD_DIVISOR = 3;
 const PROP_VERTICES = 32768;
+// Texels across the tileable noise that the flames' fine detail is drawn from (see volume.wgsl).
+const FLAME_NOISE_SIZE = 64;
+// How long (s of the fire's time) each of the two layers of that detail is carried along with the
+// gas before it is renewed (as DETAIL_CYCLE in volume.wgsl; the layers take turns, half a cycle apart).
+const FLAME_DETAIL_CYCLE = 0.3;
 const CANDLE_BRIGHTNESS = 1.2e-4; // light from a candle flame (in the units of the fire's lights)
 const MATCH_BRIGHTNESS = 1.5e-4;
 // How brightly a lamp's shade (or a lantern's glass) glows, for the light it gives.
@@ -121,6 +128,19 @@ export class Renderer {
   private readonly propBuf: GPUBuffer;
   private propVertexCount = 0;
   private readonly linear: GPUSampler;
+  private readonly flameNoise: GPUTexture;
+  private readonly repeat: GPUSampler;
+  // The flames' fine detail carried along with the gas: for each of two layers, how far the gas
+  // has moved since the layer was renewed, on the air's grid. Two sides, one read and one written
+  // each frame: [side 0 layer A, side 0 layer B, side 1 A, side 1 B]. (1 x 1 x 1 without detail.)
+  private readonly carryPipeline: GPUComputePipeline;
+  private readonly carryBuf: GPUBuffer;
+  private readonly carryData = new Float32Array(8);
+  private carried: GPUTexture[] = [];
+  private carryGroups: GPUBindGroup[] = [];
+  private carrySide = 0; // the side with the latest layers
+  private carryTime = 0; // the fire's time at the last frame
+  private carryRenewals = [NaN, NaN]; // how many times each layer had been renewed, as of the last frame
   private readonly bbTable: Float32Array;
   private match: { pos: Vec3; lit: boolean } | null = null;
   /** The room's own lights (set from the settings). */
@@ -175,7 +195,7 @@ export class Renderer {
   private lightsGroup: GPUBindGroup | null = null;
   private lightFieldGroup: GPUBindGroup | null = null;
   private sceneGroup: GPUBindGroup | null = null;
-  private volumeGroup: GPUBindGroup | null = null;
+  private volumeGroups: GPUBindGroup[] = [];
   private compositeGroup: GPUBindGroup | null = null;
   private targets: Targets | null = null;
   private frameIndex = 0;
@@ -218,6 +238,26 @@ export class Renderer {
     });
 
     const module = (label: string, ...parts: string[]) => device.createShaderModule({ label, code: parts.join('\n') });
+
+    // The noise for the flames' fine detail, baked once.
+    this.flameNoise = device.createTexture({
+      label: 'flame noise',
+      size: [FLAME_NOISE_SIZE, FLAME_NOISE_SIZE, FLAME_NOISE_SIZE],
+      dimension: '3d',
+      format: 'rgba16float',
+      usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.repeat = device.createSampler({ magFilter: 'linear', minFilter: 'linear', addressModeU: 'repeat', addressModeV: 'repeat', addressModeW: 'repeat' });
+    const noisePipeline = device.createComputePipeline({ label: 'flame noise', layout: 'auto', compute: { module: module('flame noise', flameNoiseSrc), entryPoint: 'main' } });
+    const noiseEnc = device.createCommandEncoder({ label: 'flame noise' });
+    const noisePass = noiseEnc.beginComputePass({ label: 'flame noise' });
+    noisePass.setPipeline(noisePipeline);
+    noisePass.setBindGroup(0, device.createBindGroup({ layout: noisePipeline.getBindGroupLayout(0), entries: [{ binding: 0, resource: this.flameNoise.createView() }] }));
+    noisePass.dispatchWorkgroups(FLAME_NOISE_SIZE / 4, FLAME_NOISE_SIZE / 4, FLAME_NOISE_SIZE / 4);
+    noisePass.end();
+    device.queue.submit([noiseEnc.finish()]);
+    this.carryPipeline = device.createComputePipeline({ label: 'flame detail carry', layout: 'auto', compute: { module: module('flame detail carry', flameCoordsSrc), entryPoint: 'main' } });
+    this.carryBuf = device.createBuffer({ label: 'flame detail carry', size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
 
     this.lightsPipeline = device.createComputePipeline({
       label: 'fire lights',
@@ -526,6 +566,35 @@ export class Renderer {
       ],
     });
     this.sparks.setSim(sim);
+
+    for (const t of this.carried) t.destroy();
+    const carrySize = sim.quality.flameDetail ? sim.dims : [1, 1, 1];
+    this.carried = [0, 1, 2, 3].map((i) =>
+      this.device.createTexture({
+        label: `flame detail carried ${i}`,
+        size: carrySize,
+        dimension: '3d',
+        format: 'rgba16float',
+        usage: GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.TEXTURE_BINDING,
+      }),
+    );
+    this.carryGroups = [0, 1].map((side) =>
+      this.device.createBindGroup({
+        label: 'flame detail carry',
+        layout: this.carryPipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.carryBuf } },
+          { binding: 1, resource: sim.velocity.createView() },
+          { binding: 2, resource: this.linear },
+          { binding: 3, resource: this.carried[2 * side].createView() },
+          { binding: 4, resource: this.carried[2 * side + 1].createView() },
+          { binding: 5, resource: this.carried[2 * (1 - side)].createView() },
+          { binding: 6, resource: this.carried[2 * (1 - side) + 1].createView() },
+        ],
+      }),
+    );
+    this.carryRenewals = [NaN, NaN];
+
     this.overlayGroup = this.device.createBindGroup({
       label: 'overlay',
       layout: this.overlayLayout,
@@ -611,21 +680,31 @@ export class Renderer {
   }
 
   private rebuildVolumeGroup() {
-    if (!this.sim || !this.targets || !this.lightField) return;
-    this.volumeGroup = this.device.createBindGroup({
-      label: 'fire volume',
-      layout: this.volumePipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: this.frameBuf } },
-        { binding: 1, resource: this.linear },
-        { binding: 2, resource: this.sim.scalars.createView() },
-        { binding: 3, resource: this.targets.depth.createView() },
-        { binding: 4, resource: { buffer: this.bbBuf } },
-        { binding: 5, resource: this.sim.velocity.createView() },
-        { binding: 6, resource: this.sim.smoke.createView() },
-        { binding: 7, resource: this.lightField.createView() },
-      ],
-    });
+    const sim = this.sim;
+    const targets = this.targets;
+    const lightField = this.lightField;
+    if (!sim || !targets || !lightField) return;
+    // One for each side of the carried detail.
+    this.volumeGroups = [0, 1].map((side) =>
+      this.device.createBindGroup({
+        label: 'fire volume',
+        layout: this.volumePipeline.getBindGroupLayout(0),
+        entries: [
+          { binding: 0, resource: { buffer: this.frameBuf } },
+          { binding: 1, resource: this.linear },
+          { binding: 2, resource: sim.scalars.createView() },
+          { binding: 3, resource: targets.depth.createView() },
+          { binding: 4, resource: { buffer: this.bbBuf } },
+          { binding: 5, resource: sim.velocity.createView() },
+          { binding: 6, resource: sim.smoke.createView() },
+          { binding: 7, resource: lightField.createView() },
+          { binding: 8, resource: this.flameNoise.createView() },
+          { binding: 9, resource: this.repeat },
+          { binding: 10, resource: this.carried[2 * side].createView() },
+          { binding: 11, resource: this.carried[2 * side + 1].createView() },
+        ],
+      }),
+    );
   }
 
   /** Rebuilds the room around the fire (after the log model moved to another room, for more or less detail, or a kettle). */
@@ -659,7 +738,7 @@ export class Renderer {
     const sim = this.sim;
     const t = this.targets;
     const field = this.lightField;
-    if (!sim || !t || !field || !this.lightsGroup || !this.lightFieldGroup || !this.sceneGroup || !this.volumeGroup || !this.compositeGroup) return;
+    if (!sim || !t || !field || !this.lightsGroup || !this.lightFieldGroup || !this.sceneGroup || !this.volumeGroups.length || !this.compositeGroup) return;
     this.frameIndex++;
     // Smooth the fire over frames only while the camera holds still.
     const moved = camera.viewProj.some((v, i) => Math.abs(v - this.lastViewProj[i]) > 1e-5);
@@ -677,6 +756,7 @@ export class Renderer {
     cp.setBindGroup(0, this.lightFieldGroup);
     cp.dispatchWorkgroups(Math.ceil(field.width / 4), Math.ceil(field.height / 4), Math.ceil(field.depthOrArrayLayers / 4));
     this.sparks.update(cp, dt, params.sparks, params.gravity);
+    if (sim.quality.flameDetail) this.carryDetail(cp, sim, time);
     cp.end();
 
     const scene = enc.beginRenderPass({
@@ -717,7 +797,7 @@ export class Renderer {
       ],
     });
     vol.setPipeline(this.volumePipeline);
-    vol.setBindGroup(0, this.volumeGroup);
+    vol.setBindGroup(0, this.volumeGroups[this.carrySide]);
     vol.draw(3);
     vol.end();
 
@@ -808,6 +888,28 @@ export class Renderer {
     }
 
     this.device.queue.submit([enc.finish()]);
+  }
+
+  /**
+   * Carries the flames' fine detail along with the gas, by the fire's time since the last frame;
+   * a layer whose time is up starts afresh.
+   */
+  private carryDetail(pass: GPUComputePassEncoder, sim: FireSim, time: number) {
+    const dt = Math.min(Math.max(time - this.carryTime, 0), 0.1);
+    this.carryTime = time;
+    const renew = [0, 0.5].map((offset, i) => {
+      const n = Math.floor(time / FLAME_DETAIL_CYCLE + offset);
+      const fresh = n !== this.carryRenewals[i];
+      this.carryRenewals[i] = n;
+      return fresh ? 1 : 0;
+    });
+    const [nx, ny, nz] = sim.dims;
+    this.carryData.set([nx, ny, nz, sim.h, dt, renew[0], renew[1], 0]);
+    this.device.queue.writeBuffer(this.carryBuf, 0, this.carryData);
+    pass.setPipeline(this.carryPipeline);
+    pass.setBindGroup(0, this.carryGroups[this.carrySide]);
+    pass.dispatchWorkgroups(Math.ceil(nx / 4), Math.ceil(ny / 4), Math.ceil(nz / 4));
+    this.carrySide = 1 - this.carrySide;
   }
 
   /**
@@ -922,7 +1024,7 @@ export class Renderer {
     const now = new Date();
     f[140] = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds() + now.getMilliseconds() / 1000;
     this.writeSky(f);
-    f.set([p.saturation, room.sky ? p.starlight : 0, sim.quality.smooth ? 1 : 0, 0], 184);
+    f.set([p.saturation, room.sky ? p.starlight : 0, sim.quality.smooth ? 1 : 0, sim.quality.flameDetail ?? 0], 184);
     this.writeFades(f, camera, dt);
     this.device.queue.writeBuffer(this.frameBuf, 0, this.frameData);
   }

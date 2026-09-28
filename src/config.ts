@@ -25,6 +25,7 @@ export interface Quality {
   traceCells?: number; // trace the flow back in steps of at most this many cells (unset: in one step)
   fps?: number; // the most frames a second to draw (the fire is still worked out sixty times a second)
   logEvery?: number; // work out the insides of the logs every this many steps (every step unless given)
+  flameDetail?: number; // how much fine detail to draw into the flames, finer than the grid (0..1: see volume.wgsl)
 }
 
 /** The fire's time step (s): it is simulated sixty times a second of its own time. */
@@ -35,7 +36,7 @@ export const QUALITY: Record<string, Quality> = {
   // sweeps to match, a small picture (scaled up to fill the screen) drawn thirty times a second,
   // and the insides of the logs worked out every fourth step (they change slowly). About a tenth
   // of the work of Medium. (Not fewer physics steps: with fewer, a teepee of logs slowly slumps.)
-  low: { label: 'Low', cells: 48 * 54 * 24, pressureIterations: 12, pixels: 400_000, fps: 30, logEvery: 4 },
+  low: { label: 'Low', cells: 48 * 54 * 24, pressureIterations: 12, pixels: 400_000, fps: 30, logEvery: 4, flameDetail: 1 },
   medium: { label: 'Medium', cells: 96 * 108 * 48, pressureIterations: 20, pixels: 2_400_000 },
   high: { label: 'High', cells: 128 * 144 * 64, pressureIterations: 24, pixels: 2_400_000 },
   // For the fastest graphics cards there are (and those to come): nearly seven times the cells of

@@ -9,6 +9,10 @@
 @group(0) @binding(5) var vel: texture_3d<f32>;
 @group(0) @binding(6) var smokeTex: texture_3d<f32>;
 @group(0) @binding(7) var lightField: texture_3d<f32>;
+@group(0) @binding(8) var flameNoise: texture_3d<f32>;
+@group(0) @binding(9) var repeatSamp: sampler;
+@group(0) @binding(10) var carriedA: texture_3d<f32>; // how far the gas has moved (m), for each layer of detail (flame_coords.wgsl)
+@group(0) @binding(11) var carriedB: texture_3d<f32>;
 
 // Share of light that smoke scatters rather than absorbs: tar and water droplets are pale,
 // soot is dark.
@@ -63,6 +67,59 @@ fn smoothSample(tex: texture_3d<f32>, uvw: vec3<f32>) -> vec4<f32> {
 fn fieldSample(tex: texture_3d<f32>, uvw: vec3<f32>) -> vec4<f32> {
   if (F.grade.z > 0.5) { return smoothSample(tex, uvw); }
   return textureSampleLevel(tex, linSamp, uvw, 0.0);
+}
+
+// Fine detail for flames on a coarse grid. A flame burns in thin sheets where the wood gas meets
+// the air; a grid of 15 mm cells smears them into thick, dim, glowing blobs. (At High, half the
+// flames' light comes from a tenth of the gas it does at Low, and the gas over 1500 K fills a
+// quarter of the room it does at Low.) So on a coarse grid a cell of flame is taken to be flame
+// only in places: its soot is gathered into tongues that fill a share of it, brighter to match
+// (the same light on average), drawn from noise carried along with the gas, so that it rises,
+// leans, stretches and curls as the flames do.
+// Size (m) of a feature of the noise: across the view, up, and along the view. Long along the
+// view, so that the ray, adding up all the light behind a pixel, still sees tongues rather than
+// averaging many into a blur. (Laid out from the eye, the noise turns as the eye moves round the
+// fire; flames change too fast for that to show.)
+const DETAIL_SIZE = vec3<f32>(0.024, 0.06, 0.12);
+const DETAIL_PERIOD: f32 = 8.0; // noise features across the baked noise (flame_noise.wgsl)
+const DETAIL_CYCLE: f32 = 0.3; // s: how long a layer of detail is carried before it is renewed (Renderer.ts)
+const FLAME_SHARE: f32 = 0.35; // share of a coarse cell of flame that is flame
+const FLAME_EDGE: f32 = 0.3; // how soft the tongues' edges are (in the noise's standard deviations)
+
+// One layer of the noise at p, from where the gas there was when the layer was renewed.
+fn carriedNoise(p: vec3<f32>, moved: vec3<f32>, seed: vec3<f32>, across: vec3<f32>, along: vec3<f32>) -> f32 {
+  let was = p - moved;
+  let at = vec3<f32>(dot(was, across), was.y, dot(was, along));
+  return textureSampleLevel(flameNoise, repeatSamp, at / (DETAIL_SIZE * DETAIL_PERIOD) + seed, 0.0).x;
+}
+
+// Noise (about unit normal) at p, carried with the gas: two layers, each renewed (at a random
+// place in the noise) while the other shows, blended keeping the contrast. `across` and `along`
+// are the horizontal directions across and along the view.
+fn flowNoise(p: vec3<f32>, uvw: vec3<f32>, across: vec3<f32>, along: vec3<f32>) -> f32 {
+  let cycle = F.time / DETAIL_CYCLE;
+  let ageA = fract(cycle);
+  let ageB = fract(cycle + 0.5);
+  let wA = 1.0 - abs(2.0 * ageA - 1.0);
+  let wB = 1.0 - wA;
+  let seedA = hash33(vec3<i32>(i32(floor(cycle)), 0, 101));
+  let seedB = hash33(vec3<i32>(i32(floor(cycle + 0.5)), 1, 101));
+  let nA = carriedNoise(p, textureSampleLevel(carriedA, linSamp, uvw, 0.0).xyz, seedA, across, along);
+  let nB = carriedNoise(p, textureSampleLevel(carriedB, linSamp, uvw, 0.0).xyz, seedB, across, along);
+  return (wA * nA + wB * nB) * inverseSqrt(max(wA * wA + wB * wB, 1e-4));
+}
+
+// The soot at p, gathered into tongues: s is the coarse sample there.
+fn flameSoot(s: vec4<f32>, p: vec3<f32>, uvw: vec3<f32>, across: vec3<f32>, along: vec3<f32>) -> f32 {
+  let soot = max(s.w, 0.0);
+  let flame = smoothstep(800.0, 1100.0, s.x) * (1.0 - smoothstep(1900.0, 2200.0, s.x)) * F.grade.w;
+  if (flame <= 0.0 || soot <= 1e-4) { return soot; }
+  let share = 1.0 - (1.0 - FLAME_SHARE) * flame;
+  // Flame where the noise is below the level a share of it lies below (normal quantile, by the
+  // logistic approximation).
+  let level = log(share / max(1.0 - share, 1e-4)) / 1.702;
+  let inFlame = 1.0 - smoothstep(level - FLAME_EDGE, level + FLAME_EDGE, flowNoise(p, uvw, across, along));
+  return soot * inFlame / share;
 }
 
 fn heatRamp(x: f32) -> vec3<f32> {
@@ -135,6 +192,12 @@ fn fs(@builtin(position) fragPos: vec4<f32>) -> VolumeOut {
     return out;
   }
 
+  // The horizontal directions along and across the view (for the flames' fine detail).
+  let ahead = F.invViewProj * vec4<f32>(0.0, 0.0, 1.0, 1.0);
+  let look = ahead.xyz / ahead.w - ro;
+  let along = normalize(vec3<f32>(look.x, 0.0, look.z) + vec3<f32>(0.0, 0.0, 1e-6));
+  let across = vec3<f32>(-along.z, 0.0, along.x);
+
   let stepLen = F.simH * F.stepScale;
   // Random start offset per pixel and frame: hides step banding, and the eye averages the
   // remaining grain over successive frames. (Structured noise such as IGN shows as hatching.)
@@ -147,17 +210,20 @@ fn fs(@builtin(position) fragPos: vec4<f32>) -> VolumeOut {
   loop {
     if (t >= tFar || Tr < 0.005) { break; }
     // Each sample is nudged sideways by up to ~half a cell at random: over a few frames this
-    // filters out grid-scale streaks the rising gas carries, at no extra cost.
+    // filters out grid-scale streaks the rising gas carries, at no extra cost. (Less with fine
+    // detail in the flames, which hides the streaks itself: on a coarse grid a wide nudge, into a
+    // flame whose light climbs steeply with its temperature, shows as grain.)
     let r = hash33(vec3<i32>(pix, i32(F.frameIdx) * 64 + step)).yz - 0.5;
-    let nudge = vec3<f32>(r.x, 0.0, r.y) * (0.9 * F.simH);
+    let nudge = vec3<f32>(r.x, 0.0, r.y) * (mix(0.9, 0.35, F.grade.w) * F.simH);
     let uvw = (ro + rd * t + nudge - bmin) / size;
     step++;
-    let s = fieldSample(scal, uvw);
+    var s = fieldSample(scal, uvw);
     let ds = min(stepLen, tFar - t);
     heat += max(s.x - 450.0, 0.0) * 0.001 * ds;
     var e: vec3<f32>;
     var sigma: f32;
     if (F.debugView == 0u || F.debugView >= 7u) {
+      if (F.grade.w > 0.0) { s.w = flameSoot(s, ro + rd * t, uvw, across, along); }
       let aux = fieldSample(smokeTex, uvw);
       var smoke = F.kSmoke * max(aux.x, 0.0);
       var fade = 1.0;

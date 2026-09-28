@@ -77,7 +77,8 @@ and the rest under **More settings**:
 - **Quality:** the size of the air's grid: **Low**, for phones and weak graphics cards (a coarse
   grid of 15 mm cells, a small picture scaled up to the screen, thirty frames a second, and the
   insides of the logs worked out every fourth step: about a tenth of the work of Medium; phones
-  start on it), Medium, High,
+  start on it; the flames are drawn with detail finer than the grid, in tongues carried along
+  with the gas, as a coarse grid smears a flame's thin sheets into glowing blobs), Medium, High,
   or **Ultra**, for the fastest graphics cards there are and those to come: nearly eight million cells, 3 mm across in a
   fireplace (seven times High's), with the flames drawn through a smooth filter, so that even
   close up no trace of the grid shows in them; sharp on a 4K screen. It takes about a gigabyte
