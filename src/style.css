@@ -324,6 +324,18 @@ svg {
   backdrop-filter: blur(6px);
 }
 
+/* (Five of them, with Settings across from them: a little closer on the narrowest phones.) */
+@media (max-width: 360px) {
+  #corner {
+    gap: 5px;
+  }
+
+  #corner .round {
+    width: 34px;
+    height: 34px;
+  }
+}
+
 /* While a log is held in the tongs: turn it, push it back, pull it closer. */
 #holding {
   position: fixed;
@@ -549,6 +561,18 @@ body:not(.bare) #show-controls {
   display: none;
 }
 
+/* (Where centring it would put it over the round buttons: between them and Settings instead.) */
+@media (min-width: 560px) and (max-width: 860px) {
+  #moisture {
+    left: 246px;
+    left: calc(246px + env(safe-area-inset-left, 0px));
+    right: 92px;
+    right: calc(92px + env(safe-area-inset-right, 0px));
+    width: auto;
+    transform: none;
+  }
+}
+
 #moisture .title {
   margin-bottom: 5px;
   color: var(--text);
@@ -669,6 +693,298 @@ body.bare #sky-labels {
   50% { opacity: 0.45; }
 }
 
+/* ---- The main page (intro.ts): where to sit, what it does and how it works ------------------- */
+
+#intro {
+  display: none;
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* (Not quite opaque: opened over a fire, the fire glows through.) */
+  background: radial-gradient(80% 50% at 50% 0%, rgba(232, 145, 74, 0.1), transparent 70%), rgba(11, 8, 6, 0.9);
+  --warm: #dccbb9; /* text to read at length: lighter than --muted */
+}
+
+.intro #intro {
+  display: block;
+}
+
+/* Behind it only the fire shows (if one is burning), none of its controls. */
+.intro #app > :not(#scene) {
+  display: none;
+}
+
+#intro .page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 48px 20px 32px;
+  padding: max(48px, calc(env(safe-area-inset-top, 0px) + 28px)) max(20px, env(safe-area-inset-right, 0px)) max(32px, env(safe-area-inset-bottom, 0px)) max(20px, env(safe-area-inset-left, 0px));
+}
+
+#intro header {
+  text-align: center;
+}
+
+#intro .flame {
+  width: 34px;
+  height: 34px;
+  fill: var(--accent);
+  stroke: none;
+  filter: drop-shadow(0 0 10px rgba(232, 145, 74, 0.55));
+}
+
+#intro h1,
+#intro h2 {
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+  font-weight: 400;
+}
+
+#intro h1 {
+  margin: 6px 0 14px;
+  font-size: clamp(42px, 7vw, 68px);
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  outline: none;
+}
+
+#intro .lede {
+  max-width: 34em;
+  margin: 0 auto;
+  font-size: clamp(16px, 2.1vw, 19px);
+  line-height: 1.55;
+  color: var(--warm);
+}
+
+#intro .pick {
+  margin: clamp(32px, 6vh, 52px) 0 18px;
+  text-align: center;
+  font-size: clamp(21px, 2.6vw, 26px);
+}
+
+#intro .rooms {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 900px) {
+  #intro .rooms {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}
+
+#intro .room {
+  position: relative;
+  display: block;
+  height: 100%;
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+#intro .room[href]:hover,
+#intro .room:focus-visible {
+  transform: translateY(-3px);
+  border-color: rgba(232, 145, 74, 0.55);
+  box-shadow: 0 12px 32px -12px rgba(232, 145, 74, 0.45);
+}
+
+#intro .room:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+#intro .room img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #000;
+}
+
+#intro .room .name {
+  display: block;
+  padding: 11px 14px 3px;
+  font-size: 16px;
+  color: var(--text);
+}
+
+#intro .room .about {
+  display: block;
+  padding: 0 14px 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* Where the fire is burning now (the main page opened over it). */
+#intro .room .burning {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 11px 4px 9px;
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(18, 12, 9, 0.8);
+  border: 1px solid rgba(232, 145, 74, 0.45);
+  border-radius: 999px;
+}
+
+#intro .room .burning::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+/* No fire can be lit in this browser: the pictures stay, as pictures. */
+#intro .room:not([href]) {
+  cursor: default;
+  opacity: 0.7;
+}
+
+#intro .notice {
+  max-width: 40em;
+  margin: 28px auto 0;
+  padding: 14px 18px;
+  text-align: center;
+  line-height: 1.5;
+  background: rgba(232, 145, 74, 0.1);
+  border: 1px solid rgba(232, 145, 74, 0.45);
+  border-radius: 10px;
+}
+
+#intro .notice[hidden],
+#intro .after[hidden] {
+  display: none;
+}
+
+#intro .after {
+  margin: 18px 0 0;
+  text-align: center;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+#intro .info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px 56px;
+  margin-top: 52px;
+  padding-top: 36px;
+  border-top: 1px solid var(--panel-border);
+}
+
+@media (max-width: 760px) {
+  #intro .info {
+    grid-template-columns: 1fr;
+    margin-top: 40px;
+    padding-top: 28px;
+  }
+}
+
+#intro .info h2 {
+  margin: 0 0 14px;
+  font-size: 24px;
+}
+
+#intro .info p,
+#intro .info li {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--warm);
+}
+
+#intro .info p {
+  margin: 0 0 12px;
+}
+
+#intro .info b {
+  font-weight: 600;
+  color: var(--text);
+}
+
+#intro .info ul {
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+#intro .tools li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+#intro .tools svg {
+  flex: none;
+  color: var(--accent);
+}
+
+#intro .how li {
+  margin-bottom: 10px;
+  padding-left: 14px;
+  border-left: 2px solid rgba(232, 145, 74, 0.35);
+}
+
+#intro footer {
+  margin-top: 36px;
+  padding-top: 20px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+  border-top: 1px solid var(--panel-border);
+}
+
+#intro footer p {
+  max-width: 48em;
+  margin: 0 auto 8px;
+}
+
+#intro footer a {
+  color: var(--accent);
+}
+
+/* Opened over a fire: the way back to it, where the house button was. */
+#intro-back {
+  position: fixed;
+  top: 12px;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 12px;
+  left: calc(12px + env(safe-area-inset-left, 0px));
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px 8px 10px;
+  background: var(--panel-bg);
+  border-color: rgba(255, 180, 120, 0.25);
+  border-radius: 999px;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+#intro-back[hidden] {
+  display: none;
+}
+
 #message {
   position: fixed;
   inset: 0;
@@ -698,7 +1014,13 @@ body.bare #sky-labels {
     animation: none;
   }
 
-  #hint {
+  #hint,
+  #intro .room {
     transition: none;
+  }
+
+  #intro .room[href]:hover,
+  #intro .room:focus-visible {
+    transform: none;
   }
 }

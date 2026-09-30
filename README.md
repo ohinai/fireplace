@@ -28,6 +28,16 @@ npm run dev
 Open http://localhost:5173 in a browser with WebGPU (see *Publishing it* below for which).
 `npm run build` produces a static site in `dist/`.
 
+**The main page:** a first visit opens on a page with a picture of each place to sit (the brick
+hearth, the hacienda, the campfire, the desert camp) and a few words on what it does and how it
+works; choose one and the fire lights there, its sound starting with the same click. After that
+it goes straight to the place chosen last. The house button at the top left brings the main page
+back over the fire, which burns on behind it: choose the same place again (or *Back to the fire*,
+or `Esc`) to go back to it, or another for a new fire there. The browser's Back and Forward go
+between the two. The pictures on it (`src/pictures`) are rendered by the fireplace itself, at
+High quality with Full detail. A browser without WebGPU gets the main page too, saying what the
+fire needs.
+
 **Controls:** **Add a log** (or `L`) puts a log (or, with Wood set to Kindling, a stick of
 kindling) on the fire: up to twenty pieces, as many as fit (a fireplace's grate or andirons take
 ten to fifteen before the pile nears the lintel; a campfire, once there is no room left to stand
@@ -47,8 +57,8 @@ press `1` to `4`):
 Right-drag (or two fingers) looks around (all the way round the campfire); the wheel (or
 pinching) zooms. Furniture (or the tent) that comes between you and the fire as you look round
 fades away until you have passed it, so nothing ever hides the fire. The round buttons at the
-top left: the speaker (or `M`) turns the sound on and off (browsers start it on your first
-click); the camera (or `V`) glides to the next view; the frame (or `H`) hides every control, for
+top left: the house goes to the main page; the speaker (or `M`) turns the sound on and off
+(browsers start it on your first click); the camera (or `V`) glides to the next view; the frame (or `H`) hides every control, for
 just the fire: move the pointer (or tap) and a small button comes up to bring them back, or press
 `H` or `Esc`; the flask (or `X`) opens **Science** (see below).
 
@@ -132,10 +142,11 @@ Relief Fund ([pcrf.net/donate](https://www.pcrf.net/donate)).
   from the carbon in the wood gas, the char and the firelighters it has burnt; dry wood is about
   half carbon, and each kilogram of carbon makes 3.7 kg of CO₂), the kettle, gravity, frames a
   second. **Back to Earth** puts all of it back. Add `?quality=low|medium|high|ultra` to the URL to skip
-automatic quality selection, `?room=` to pick the room and `?fire=cold` to start with a cold
-fire.
+automatic quality selection, `?room=` to go straight to a room (past the main page) and
+`?fire=cold` to start with a cold fire. (The address names a room only when it came with one:
+otherwise it stays the site's own, so that sharing it shares the main page.)
 
-**Rooms** (Settings → Room, or `?room=brick|hacienda|campfire|desert`):
+**Rooms** (on the main page, Settings → Room, or `?room=brick|hacienda|campfire|desert`):
 
 - **Brick hearth:** a sooty firebrick firebox in a chimney breast of old brick, logs on a basket
   grate, pillar candles on the hearth and wall lights either side: oak, birch, pine or damp
@@ -474,7 +485,8 @@ logs are all catching), with flames around 1300–1500 K. A log lasts roughly an
 ## Publishing it
 
 It counts its visits with [GoatCounter](https://www.goatcounter.com) (no cookies, nothing that
-identifies anyone), and a few events (`src/stats.ts`): the room picked, the quality a device settles
+identifies anyone), and a few events (`src/stats.ts`): the room picked (on the main page, or in
+Settings), the quality a device settles
 on and roughly how many frames a second it managed, the quality picked by hand, a browser without
 WebGPU (or a graphics card that gives up), and Bigfoot coming by.
 
@@ -483,15 +495,17 @@ It is published on GitHub Pages at https://ohinai.github.io/fireplace/:
 Pages source is set to GitHub Actions).
 
 `npm run build` makes a static site in `dist/`: put it on any web server or static host (it uses
-relative paths, so a subfolder is fine). It is about 2.1 MB, which comes down as about 0.8 MB
-gzipped or 0.63 MB with Brotli (what static hosts usually serve):
+relative paths, so a subfolder is fine). It is about 2.3 MB, which comes down as about 0.9 MB
+gzipped or 0.7 MB with Brotli (what static hosts usually serve); a visit that goes straight to
+the fire leaves out the main page's pictures:
 
 | file | what | gzip | Brotli |
 | --- | --- | --- | --- |
-| `rapier_wasm3d_bg-*.wasm` | the physics engine (WebAssembly) | 573 KB | 419 KB |
-| `index-*.js` | the fireplace (the shaders stripped of their comments) | 113 KB | 95 KB |
+| `rapier_wasm3d_bg-*.wasm` | the physics engine (WebAssembly: it loads while the main page is read) | 573 KB | 419 KB |
+| `index-*.js` | the fireplace (the shaders stripped of their comments) | 131 KB | 110 KB |
 | `stars-*.bin` | the star catalogue (loads after the fire is showing) | 95 KB | 88 KB |
-| `rapier-*.js`, `index-*.css`, `index.html` | the rest | 29 KB | 25 KB |
+| `brick-*.webp` and three more | the pictures of the places, on the main page (only while it shows) | 80 KB | 80 KB |
+| `rapier-*.js`, `index-*.css`, `index.html` | the rest | 33 KB | 28 KB |
 
 The physics engine's WebAssembly loads as a file of its own (not inlined as base64, a third
 bigger) and compiles as it streams in, which wants the server to send `.wasm` files as
@@ -501,7 +515,7 @@ it still works, a little slower to start).
 It needs **WebGPU**: recent Chrome and Edge on Windows, macOS, ChromeOS and Android (Android 12
 or later, with most recent GPUs), Safari 26 on macOS, iOS and iPadOS, and Firefox on Windows. On
 some systems (Linux, older phones, other Firefox builds) it may still be off by default. A
-browser without it gets a message saying so. It asks for no optional GPU features or raised limits, so wherever
+browser without it gets the main page, saying so. It asks for no optional GPU features or raised limits, so wherever
 WebGPU runs it should too; the quality is picked for the graphics card as it starts (a phone
 starts on Low), and the picture is never drawn at more than about 2.4 million pixels
 (0.4 million on Low, 8.3 on Ultra). On a touch screen, one finger uses the tool, two look around and pinch zooms;

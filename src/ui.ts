@@ -331,6 +331,7 @@ export function createUI(
     '<kbd>L</kbd> or <b>Add a log</b>: another log on the fire',
     'Right-drag (or two fingers) looks around; the wheel (or pinching) zooms',
     '<kbd>M</kbd> sound on or off, <kbd>V</kbd> next view, <kbd>H</kbd> hide the controls (<kbd>Esc</kbd> brings them back), <kbd>X</kbd> science',
+    'The house (top left): the main page, to sit somewhere else or read how it works (<kbd>Esc</kbd> comes back to the fire)',
   ]) {
     const item = document.createElement('li');
     item.innerHTML = html;
@@ -580,6 +581,8 @@ export function createUI(
   window.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // (Not while the controls are out of use: behind the main page.)
+    if (panel.closest('[inert]')) return;
     const key = e.key.toLowerCase();
     if (key === 'h') setBare(!bare);
     if (key === 'x') setScience(science.hidden !== false);

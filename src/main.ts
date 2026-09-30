@@ -12,6 +12,7 @@ import { LogPhysics } from './sim/LogPhysics';
 import { LogSystem } from './sim/LogSystem';
 import { Tools, type ToolName } from './tools';
 import { Critters } from './critters';
+import { createIntro, type Intro } from './intro';
 import { countEvent } from './stats';
 import { createUI, MOISTURE_VIEW, SCIENCE_SLIDERS, SLIDERS, TOUCH, type SkySettings, type SoundSettings } from './ui';
 import starsUrl from './sky/stars.bin?url';
@@ -24,7 +25,11 @@ const MAX_LOGS_ADDED = 20; // how many logs (and sticks, and pieces of broken on
 const FLAME_REF = 14000; // W the flames of a healthy fire radiate (for the sound)
 const COLD_HINT = 'The fire is laid but not lit: take the match (4) and hold it to a firelighter, tucked under the logs at either end';
 
+/** The main page, where to sit (for a message to take over from). */
+let mainPage: Intro | null = null;
+
 function showMessage(html: string) {
+  mainPage?.close();
   document.getElementById('loading')!.hidden = true;
   const el = document.getElementById('message')!;
   // (Shown first, then filled, so that screen readers read it out; in one block, so that the
@@ -36,6 +41,7 @@ function showMessage(html: string) {
 const NO_WEBGPU =
   'This fireplace needs <b>WebGPU</b>, which this browser doesn’t have (or has turned off).<br>' +
   'It runs in recent Chrome and Edge (on Windows, Mac, ChromeOS and Android), in Safari 26 (on Mac, iPhone and iPad) and in Firefox on Windows.';
+const NO_ADAPTER = 'This browser has WebGPU, but found no graphics card it can use for it (it may be switched off, or blocked for this one).';
 
 /** A setting remembered from last time (or the default). */
 function load<T>(key: string, fallback: T): T {
@@ -88,35 +94,67 @@ function saveTweaks(params: Params) {
   else forget('tweaks');
 }
 
-/** The room to start in: ?room= in the address, else the one chosen last time. */
-function initialRoom(query: URLSearchParams): RoomKey {
-  let key = query.get('room');
-  if (!key) {
-    try {
-      key = localStorage.getItem('fireplace.room');
-    } catch {
-      key = null;
-    }
+/**
+ * The room to go straight to: one named in the address (?room=), else the one chosen last time.
+ * Null for neither: a first visit, which opens on the main page.
+ */
+function startingRoom(query: URLSearchParams): RoomKey | null {
+  let saved: string | null = null;
+  try {
+    saved = localStorage.getItem('fireplace.room');
+  } catch {
+    // (None, then.)
   }
-  return key && key in ROOMS ? (key as RoomKey) : 'brick';
+  for (const key of [query.get('room'), saved]) if (key && key in ROOMS) return key as RoomKey;
+  return null;
+}
+
+/** Where the fire is (to light it there next time). */
+function rememberRoom(key: RoomKey) {
+  try {
+    localStorage.setItem('fireplace.room', key);
+  } catch {
+    // Not important.
+  }
 }
 
 async function start() {
   const canvas = document.getElementById('scene') as HTMLCanvasElement;
+  const query = new URLSearchParams(location.search);
+  const firstRoom = startingRoom(query);
+  const intro = createIntro(firstRoom === null);
+  mainPage = intro;
   if (!navigator.gpu) {
-    showMessage(NO_WEBGPU);
+    intro.unavailable(NO_WEBGPU);
     countEvent('no-webgpu', 'No WebGPU in this browser');
     return;
   }
-  // The physics engine loads while the GPU gets ready.
+  // The physics engine loads, and the GPU gets ready, while the main page is read.
   const physicsLoading = LogPhysics.load();
-  const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
-  if (!adapter) {
-    showMessage('This browser has WebGPU, but found no graphics card it can use for it (it may be switched off, or blocked for this one).');
+  const deviceReady = navigator.gpu.requestAdapter({ powerPreference: 'high-performance' }).then((adapter) => {
+    if (adapter) return adapter.requestDevice({ label: 'fireplace' });
+    intro.unavailable(NO_ADAPTER);
     countEvent('no-gpu-adapter', 'WebGPU, but no graphics card it can use');
-    return;
-  }
-  const device = await adapter.requestDevice({ label: 'fireplace' });
+    return null;
+  });
+
+  // The sound starts with the click (or tap) that chooses where to sit, as browsers allow.
+  const lighting = load<Lighting>('lighting', { ...DEFAULT_LIGHTING });
+  const sound = load<SoundSettings>('sound', { on: true, volume: DEFAULT_VOLUME });
+  const audio = new FireAudio();
+  audio.setVolume(sound.volume);
+  if (!sound.on) audio.setEnabled(false);
+  let goTo: ((key: RoomKey) => void) | null = null; // (to another room, once the fire is going)
+  intro.onPick = (key) => {
+    countEvent(`intro/${key}`, `Picked on the main page: ${ROOMS[key].label}`);
+    audio.setOutdoors(ROOMS[key].wild, lighting.time);
+    audio.start();
+    goTo?.(key);
+  };
+  // Where the fire is: chosen on the main page, if that is showing, or straight away.
+  const roomKey = intro.open ? await intro.next() : firstRoom!;
+  const device = await deviceReady;
+  if (!device) return; // (the main page says why)
   device.lost.then((info) => {
     if (info.reason === 'destroyed') return;
     showMessage(`The GPU device was lost: ${info.message}`);
@@ -130,7 +168,6 @@ async function start() {
 
   const params: Params = { ...DEFAULT_PARAMS };
   loadTweaks(params);
-  const query = new URLSearchParams(location.search);
   // The quality to start at, until the automatic check has timed this machine: Low on a phone
   // (a touch screen a hand's width across), where even a few seconds of Medium is a struggle.
   const phone = matchMedia('(pointer: coarse)').matches && Math.min(screen.width, screen.height) < 600;
@@ -139,11 +176,10 @@ async function start() {
   let startQuality = qualityKey; // the quality picked for this machine (what Reset goes back to)
   const fire = load<{ mode: FireMode }>('fire', { mode: 'lit' });
   if (query.get('fire') === 'cold' || query.get('fire') === 'lit') fire.mode = query.get('fire') as FireMode;
-  const lighting = load<Lighting>('lighting', { ...DEFAULT_LIGHTING });
   const look = load<Look>('look', { ...DEFAULT_LOOK, sky: { ...DEFAULT_LOOK.sky } });
   if (!DETAILS.some(([d]) => d === look.detail)) look.detail = DEFAULT_LOOK.detail;
 
-  const logs = new LogSystem(device, await physicsLoading, ROOMS[initialRoom(query)]);
+  const logs = new LogSystem(device, await physicsLoading, ROOMS[roomKey]);
   logs.mode = fire.mode;
   logs.reset();
   let sim = new FireSim(device, QUALITY[qualityKey], logs);
@@ -165,11 +201,7 @@ async function start() {
   const sparks = renderer.sparks;
 
   // --- Sound ---------------------------------------------------------------------------------
-  const sound = load<SoundSettings>('sound', { on: true, volume: DEFAULT_VOLUME });
-  const audio = new FireAudio();
-  audio.setVolume(sound.volume);
   audio.setOutdoors(logs.room.wild, lighting.time);
-  if (!sound.on) audio.setEnabled(false);
   /** Stereo position of a point in the fire, from where it is on screen. */
   const pan = (p: Vec3) => Math.min(Math.max(project(camera.viewProj, p[0], p[1], p[2])[0] * 0.8, -0.9), 0.9);
   // Browsers only start sound after a click, tap or key press. (The sound button and M decide
@@ -408,14 +440,15 @@ async function start() {
     critters.setWild(logs.room.wild);
     audio.setOutdoors(logs.room.wild, lighting.time);
     if (logs.mode === 'cold') ui.hint(COLD_HINT, 10);
-    try {
-      localStorage.setItem('fireplace.room', key);
-    } catch {
-      // Not important.
-    }
+    rememberRoom(key);
+    intro.setBurning(key);
+    // (An address that names a room, a link to one, is kept naming this one: else a reload would go
+    // back there. Otherwise it stays the site's own, the one to share.)
     const url = new URL(location.href);
-    url.searchParams.set('room', key);
-    history.replaceState(null, '', url);
+    if (url.searchParams.has('room')) {
+      url.searchParams.set('room', key);
+      history.replaceState(history.state, '', url);
+    }
   };
 
   const ui = createUI(params, { quality: qualityKey, detail: look.detail, smoothEdges: look.smoothEdges, view: logs.room.views[0].key, sky: look.sky }, sound, logs.room, fire.mode, { ...lighting }, {
@@ -509,6 +542,11 @@ async function start() {
     },
   });
   ui.setTool(tools.tool);
+
+  // From now on, a place chosen on the main page moves the fire there; and next time it lights here.
+  rememberRoom(logs.room.key);
+  intro.setBurning(logs.room.key);
+  goTo = setRoom;
 
   /** The science settings back to how they are on Earth: gravity, the air, the burning, what shows. */
   const resetScience = () => {
@@ -604,6 +642,7 @@ async function start() {
       setDetail: (detail) => renderer.setRoom(detail),
       kettle: () => kettle,
       stepKettle,
+      intro,
     });
   }
 
@@ -707,7 +746,9 @@ async function start() {
   );
 
   const hint = document.getElementById('hint')!;
-  if (TOUCH) hint.textContent = 'Drag a log to move it · two fingers to look around · tap for sound';
+  // (The sound may be on already, started by the click that chose where to sit.)
+  const soundHint = audio.running || !sound.on ? '' : TOUCH ? ' · tap for sound' : ' · click anywhere for sound';
+  hint.textContent = (TOUCH ? 'Drag a log to move it · two fingers to look around' : 'Drag a log to move it · Add a log with L · right-drag to look around') + soundHint;
   setTimeout(() => hint.classList.add('faded'), 9000);
 
   // Keep the screen from sleeping while the fire is showing. Browsers only grant this for a

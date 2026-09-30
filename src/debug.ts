@@ -11,6 +11,7 @@ import type { Blow, FireSim } from './sim/FireSim';
 import type { LogSystem } from './sim/LogSystem';
 import type { Tools } from './tools';
 import type { Kettle } from './sim/Kettle';
+import type { Intro } from './intro';
 
 interface DebugHooks {
   device: GPUDevice;
@@ -33,6 +34,7 @@ interface DebugHooks {
   setDetail: (detail: Detail) => void;
   kettle: () => Kettle | null;
   stepKettle: (dt: number) => void;
+  intro: Intro;
 }
 
 /**
@@ -50,6 +52,7 @@ interface DebugHooks {
  *   fire.renderer               the renderer itself (what it keeps of the still scene...)
  *   fire.look({ target, distance, yaw, pitch }), fire.view('chair')   points the camera and draws a frame
  *   fire.setDetail('high')      how much furniture and scenery there is
+ *   fire.intro                  the main page (unavailable('...') shows it as a browser without WebGPU would)
  */
 export function installDebug(h: DebugHooks) {
   const { device, getSim, logs, params, dt } = h;
@@ -71,6 +74,7 @@ export function installDebug(h: DebugHooks) {
     setDetail: h.setDetail,
     kettle: h.kettle,
     stepKettle: h.stepKettle,
+    intro: h.intro,
     look: (v: Partial<CameraView>) => {
       h.camera.setView({ key: 'debug', label: 'debug', kind: 'orbit', target: [0, 0.3, 0], distance: 1, yaw: 0, pitch: 0.2, ...v }, false);
       h.camera.update(innerWidth / innerHeight, 0);

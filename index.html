@@ -17,81 +17,181 @@
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Cpath%20fill='%23e8914a'%20d='M16%202c1%206-6%209-6%2017a6%206%200%200%200%2012%200c0-3-1-5-3-7%200%203-1%205-3%205%202-5%202-10%200-15z'/%3E%3C/svg%3E" />
     <title>Fireplace</title>
+    <!-- The main page (src/intro.ts) shows first, before anything is drawn, unless there is a fire to
+         go straight to: a room named in the address, or the one chosen last time. -->
+    <script>
+      try {
+        if ((history.state && history.state.intro) || !navigator.gpu || !(/[?&]room=/.test(location.search) || localStorage.getItem('fireplace.room'))) document.documentElement.classList.add('intro');
+      } catch (e) {
+        document.documentElement.classList.add('intro');
+      }
+    </script>
     <!-- Counts visits (and a few events: see src/stats.ts) with GoatCounter: no cookies. -->
     <script data-goatcounter="https://ohinai-fireplace.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
   </head>
   <body>
     <main>
-      <h1 class="sr-only">Fireplace</h1>
-      <!-- (Its label says which fire it is: set with the room in main.ts.) -->
-      <canvas id="scene" role="img" aria-label="A wood fire burning" aria-describedby="hint"></canvas>
-      <div id="loading" role="status">Lighting the fire…</div>
-      <div id="panel"></div>
-      <div id="corner">
-        <button id="sound" class="round" title="Sound on or off (M)" aria-label="Sound" aria-pressed="true">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
-            <path class="on" d="M15.5 9.2a4 4 0 0 1 0 5.6M18 6.8a7.5 7.5 0 0 1 0 10.4" />
-            <path class="off" d="M16 9.5l5 5M21 9.5l-5 5" />
-          </svg>
+      <!-- The fire and its controls. -->
+      <div id="app">
+        <h1 class="sr-only">Fireplace</h1>
+        <!-- (Its label says which fire it is: set with the room in main.ts.) -->
+        <canvas id="scene" role="img" aria-label="A wood fire burning" aria-describedby="hint"></canvas>
+        <div id="loading" role="status">Lighting the fire…</div>
+        <div id="panel"></div>
+        <div id="corner">
+          <button id="home" class="round" title="Main page: another place, and how it all works" aria-label="Main page">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 11.2L12 4.8l7.5 6.4" /><path d="M6.8 9.6v9.9h10.4V9.6" /><path d="M10.3 19.5v-5h3.4v5" /></svg>
+          </button>
+          <button id="sound" class="round" title="Sound on or off (M)" aria-label="Sound" aria-pressed="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" />
+              <path class="on" d="M15.5 9.2a4 4 0 0 1 0 5.6M18 6.8a7.5 7.5 0 0 1 0 10.4" />
+              <path class="off" d="M16 9.5l5 5M21 9.5l-5 5" />
+            </svg>
+          </button>
+          <button id="view" class="round" title="Next view (V)" aria-label="Next view">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3v10H4z" /><circle cx="12" cy="13" r="3.2" /></svg>
+          </button>
+          <button id="bare" class="round" title="Hide the controls: just the fire (H)" aria-label="Hide the controls">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
+          </button>
+          <button id="science-button" class="round" title="Science: the fire's workings, gravity, the air (X)" aria-label="Science" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 3.5h5M10.5 3.5v6L5.2 18.2a1.6 1.6 0 0 0 1.4 2.3h10.8a1.6 1.6 0 0 0 1.4-2.3l-5.3-8.7v-6" /><path d="M7.6 14.5h8.8" /></svg>
+          </button>
+        </div>
+        <div id="science" hidden></div>
+        <button id="show-controls" class="round" title="Show the controls (H)" aria-label="Show the controls">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M4 12h5M13 12h7" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /><circle cx="11" cy="12" r="2" /></svg>
         </button>
-        <button id="view" class="round" title="Next view (V)" aria-label="Next view">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5h3l1.6-2.5h6.8L17 8.5h3v10H4z" /><circle cx="12" cy="13" r="3.2" /></svg>
-        </button>
-        <button id="bare" class="round" title="Hide the controls: just the fire (H)" aria-label="Hide the controls">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
-        </button>
-        <button id="science-button" class="round" title="Science: the fire's workings, gravity, the air (X)" aria-label="Science" aria-pressed="false">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 3.5h5M10.5 3.5v6L5.2 18.2a1.6 1.6 0 0 0 1.4 2.3h10.8a1.6 1.6 0 0 0 1.4-2.3l-5.3-8.7v-6" /><path d="M7.6 14.5h8.8" /></svg>
-        </button>
+        <div id="moisture" hidden>
+          <div class="title">Moisture in the wood</div>
+          <div class="scale"></div>
+          <div class="ticks"><span>0%</span><span>10</span><span>20</span><span>30</span><span>40</span><span>50%+</span></div>
+          <div class="notes"><span>bone dry</span><span>seasoned</span><span>damp</span></div>
+        </div>
+        <div id="labels"></div>
+        <div id="kettle-label" class="label" hidden></div>
+        <div id="sky-labels"></div>
+        <div id="toolbar" role="toolbar" aria-label="Tools">
+          <button data-tool="tongs" title="Tongs: pick up and move logs (1)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5l6.2 11.2M17 3.5l-6.2 11.2M13.2 14.7L10 21M10.8 14.7L14 21" /><circle cx="12" cy="12.6" r="1.1" /></svg>
+            <span>Tongs</span>
+          </button>
+          <button data-tool="poker" title="Poker: push and knock logs, stir the coals (2)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 17.5L20 4M17 7l-.5-3.5M3.5 20.5l3-3" /></svg>
+            <span>Poker</span>
+          </button>
+          <button data-tool="blow" title="Blow on the fire (3)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h10.5a2.5 2.5 0 1 0-2.5-2.5M3 13h15a2.5 2.5 0 1 1-2.5 2.5M3 17h7" /></svg>
+            <span>Blow</span>
+          </button>
+          <button data-tool="match" title="Match: light a firelighter or kindling (4)">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20.5l9.2-9.2" /><path d="M16.8 6.2c1.6 1.2 2.4 2.6 1.9 4.1-.4 1.3-1.7 2.1-3 1.8-1.4-.3-2.2-1.7-1.7-3.1.3-1 1.1-1.9 2.8-2.8z" /></svg>
+            <span>Match</span>
+          </button>
+        </div>
+        <button id="add-log" title="Put another log on the fire (L)">Add a log</button>
+        <div id="holding" role="toolbar" aria-label="Move the log you are holding" hidden>
+          <button data-act="turn" data-steps="-1" title="Turn it (Q)" aria-label="Turn it left">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5H4v4" /><path d="M4.5 8.5A8 8 0 1 1 6 17" /></svg>
+          </button>
+          <button data-act="turn" data-steps="1" title="Turn it (E)" aria-label="Turn it right">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h4v4" /><path d="M19.5 8.5A8 8 0 1 0 18 17" /></svg>
+          </button>
+          <button data-act="nudge" data-steps="1" title="Push it back (W, or scroll up)" aria-label="Push it back">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg><span>Back</span>
+          </button>
+          <button data-act="nudge" data-steps="-1" title="Pull it closer (S, or scroll down)" aria-label="Pull it closer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg><span>Closer</span>
+          </button>
+        </div>
+        <div id="hint">Drag a log to move it · Add a log with L · right-drag to look around · click anywhere for sound</div>
       </div>
-      <div id="science" hidden></div>
-      <button id="show-controls" class="round" title="Show the controls (H)" aria-label="Show the controls">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10M4 12h5M13 12h7" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /><circle cx="11" cy="12" r="2" /></svg>
-      </button>
-      <div id="moisture" hidden>
-        <div class="title">Moisture in the wood</div>
-        <div class="scale"></div>
-        <div class="ticks"><span>0%</span><span>10</span><span>20</span><span>30</span><span>40</span><span>50%+</span></div>
-        <div class="notes"><span>bone dry</span><span>seasoned</span><span>damp</span></div>
-      </div>
-      <div id="labels"></div>
-      <div id="kettle-label" class="label" hidden></div>
-      <div id="sky-labels"></div>
-      <div id="toolbar" role="toolbar" aria-label="Tools">
-        <button data-tool="tongs" title="Tongs: pick up and move logs (1)">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5l6.2 11.2M17 3.5l-6.2 11.2M13.2 14.7L10 21M10.8 14.7L14 21" /><circle cx="12" cy="12.6" r="1.1" /></svg>
-          <span>Tongs</span>
+      <!-- The main page: where to sit, what it does and how it works (src/intro.ts). -->
+      <section id="intro" aria-labelledby="intro-title">
+        <button id="intro-back" type="button" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5" /></svg>Back to the fire
         </button>
-        <button data-tool="poker" title="Poker: push and knock logs, stir the coals (2)">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 17.5L20 4M17 7l-.5-3.5M3.5 20.5l3-3" /></svg>
-          <span>Poker</span>
-        </button>
-        <button data-tool="blow" title="Blow on the fire (3)">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h10.5a2.5 2.5 0 1 0-2.5-2.5M3 13h15a2.5 2.5 0 1 1-2.5 2.5M3 17h7" /></svg>
-          <span>Blow</span>
-        </button>
-        <button data-tool="match" title="Match: light a firelighter or kindling (4)">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20.5l9.2-9.2" /><path d="M16.8 6.2c1.6 1.2 2.4 2.6 1.9 4.1-.4 1.3-1.7 2.1-3 1.8-1.4-.3-2.2-1.7-1.7-3.1.3-1 1.1-1.9 2.8-2.8z" /></svg>
-          <span>Match</span>
-        </button>
-      </div>
-      <button id="add-log" title="Put another log on the fire (L)">Add a log</button>
-      <div id="holding" role="toolbar" aria-label="Move the log you are holding" hidden>
-        <button data-act="turn" data-steps="-1" title="Turn it (Q)" aria-label="Turn it left">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5H4v4" /><path d="M4.5 8.5A8 8 0 1 1 6 17" /></svg>
-        </button>
-        <button data-act="turn" data-steps="1" title="Turn it (E)" aria-label="Turn it right">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h4v4" /><path d="M19.5 8.5A8 8 0 1 0 18 17" /></svg>
-        </button>
-        <button data-act="nudge" data-steps="1" title="Push it back (W, or scroll up)" aria-label="Push it back">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6" /></svg><span>Back</span>
-        </button>
-        <button data-act="nudge" data-steps="-1" title="Pull it closer (S, or scroll down)" aria-label="Pull it closer">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" /></svg><span>Closer</span>
-        </button>
-      </div>
-      <div id="hint">Drag a log to move it · Add a log with L · right-drag to look around · click anywhere for sound</div>
+        <div class="page">
+          <header>
+            <svg class="flame" viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2c1 6-6 9-6 17a6 6 0 0 0 12 0c0-3-1-5-3-7 0 3-1 5-3 5 2-5 2-10 0-15z" /></svg>
+            <h1 id="intro-title" tabindex="-1">Fireplace</h1>
+            <p class="lede">A wood fire in your browser, simulated as it burns. Pull up a chair, put another log on, and watch it burn down to glowing embers over the evening.</p>
+          </header>
+          <div id="intro-notice" class="notice" role="alert" hidden></div>
+          <h2 class="pick">Where would you like to sit?</h2>
+          <ul class="rooms">
+            <li>
+              <a class="room" href="?room=brick" data-room="brick">
+                <img src="/src/pictures/brick.webp" alt="" width="800" height="600" loading="lazy" decoding="async" />
+                <span class="name">Brick hearth</span>
+                <span class="about">A sitting room lined with books, the cat asleep on the rug</span>
+              </a>
+            </li>
+            <li>
+              <a class="room" href="?room=hacienda" data-room="hacienda">
+                <img src="/src/pictures/hacienda.webp" alt="" width="800" height="600" loading="lazy" decoding="async" />
+                <span class="name">Hacienda</span>
+                <span class="about">An adobe fireplace framed in hand-painted Talavera tiles</span>
+              </a>
+            </li>
+            <li>
+              <a class="room" href="?room=campfire" data-room="campfire">
+                <img src="/src/pictures/campfire.webp" alt="" width="800" height="600" loading="lazy" decoding="async" />
+                <span class="name">Campfire</span>
+                <span class="about">A mountain meadow in the Cascades, Mount Rainier on the horizon</span>
+              </a>
+            </li>
+            <li>
+              <a class="room" href="?room=desert" data-room="desert">
+                <img src="/src/pictures/desert.webp" alt="" width="800" height="600" loading="lazy" decoding="async" />
+                <span class="name">Desert camp</span>
+                <span class="about">A Bedouin tent in the dunes of the Sahara, under the whole sky</span>
+              </a>
+            </li>
+          </ul>
+          <p id="intro-after" class="after">Next time it goes straight to the fire you chose; the house button, top left, brings you back here.</p>
+          <div class="info">
+            <div>
+              <h2>What you can do</h2>
+              <ul class="tools">
+                <li>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5l6.2 11.2M17 3.5l-6.2 11.2M13.2 14.7L10 21M10.8 14.7L14 21" /><circle cx="12" cy="12.6" r="1.1" /></svg>
+                  <span><b>Tongs:</b> pick up a log and move it</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 17.5L20 4M17 7l-.5-3.5M3.5 20.5l3-3" /></svg>
+                  <span><b>Poker:</b> push the logs about, stir the coals</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h10.5a2.5 2.5 0 1 0-2.5-2.5M3 13h15a2.5 2.5 0 1 1-2.5 2.5M3 17h7" /></svg>
+                  <span><b>Blow</b> on the embers to bring them back to life</span>
+                </li>
+                <li>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20.5l9.2-9.2" /><path d="M16.8 6.2c1.6 1.2 2.4 2.6 1.9 4.1-.4 1.3-1.7 2.1-3 1.8-1.4-.3-2.2-1.7-1.7-3.1.3-1 1.1-1.9 2.8-2.8z" /></svg>
+                  <span><b>Match:</b> light a fire you have laid cold</span>
+                </li>
+              </ul>
+              <p>Put another log on when it burns low. A fire takes its time: laid cold, it catches slowly, and left alone it burns down over the evening to a bed of embers glowing under their ash.</p>
+              <p>Look at it close up, from the armchair, or lie back under the stars; set a kettle by the fire to boil; or open the flask for the science: the heat, the air and the wood, and a fire on the Moon.</p>
+            </div>
+            <div>
+              <h2>How it works</h2>
+              <p>Nothing here is a video or a loop. The fire is worked out as you watch, sixty times a second, on your graphics card (with WebGPU), in real units.</p>
+              <ul class="how">
+                <li><b>The air</b> is a grid of up to nearly eight million cells. Hot gas rises, and the gas the wood gives off burns where it meets oxygen, glowing the colour of its hot soot.</li>
+                <li><b>Each log</b> is a block of 27,648 cells of wood, water and charcoal. Heat soaks in, dries it and breaks it down into charcoal and the gas that feeds the flames, so it chars, shrinks and burns through. The logs roll, stack and break as solid wood does.</li>
+                <li><b>The sound</b> is made as it happens: a crackle as the char splits, a pop as a pocket of gas bursts, the thud of a log landing.</li>
+                <li><b>The sky</b> outdoors is the real one, for that place, tonight: the 9,096 stars the eye can see, the Moon in its phase, the planets and the Milky Way.</li>
+              </ul>
+            </div>
+          </div>
+          <footer>
+            <p>It needs a browser with WebGPU: recent Chrome or Edge (on Windows, Mac, ChromeOS and Android), Safari 26 (on Mac, iPhone and iPad) or Firefox on Windows. The quality is picked to suit your graphics card; a phone starts on Low.</p>
+            <p>Made by Omar Al-Hinai, coded with Claude Opus 5.5 · <a href="https://github.com/ohinai/fireplace">The code, and more on how it works</a></p>
+          </footer>
+        </div>
+      </section>
       <div id="message" role="alert" hidden></div>
     </main>
     <script type="module" src="/src/main.ts"></script>
