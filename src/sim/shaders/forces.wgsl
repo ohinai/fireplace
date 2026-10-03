@@ -31,8 +31,13 @@
 @group(0) @binding(15) var clampSamp: sampler;
 
 // Thickness (m) of the gas layer that surfaces feed, so the fire is the same size at any
-// grid resolution.
-const SURFACE_LAYER: f32 = 0.011;
+// grid resolution (at least: a coarse grid cannot hold it in less than a cell or so).
+override SURFACE_LAYER: f32 = 0.011;
+// Soot made per wood gas burnt, as a share of the usual: on a coarse grid the flames are smeared
+// thick and long, and glow for longer than a fine grid's thin sheets do.
+override SOOT_SCALE: f32 = 1.0;
+// How much more the gas radiates away than the cell-mean temperature says (see FireSim.ts).
+override COOL_SCALE: f32 = 1.0;
 const BED_LAYER: f32 = 0.008;
 // Densities (kg/m3) of the gases the logs give off, at the temperatures they leave at.
 const RHO_WOODGAS: f32 = 0.5;
@@ -226,7 +231,7 @@ fn updateCell(c: vec3<i32>) {
   fuel -= burn;
   ox -= burn * P.stoich;
   T += burn * P.heatRelease;
-  soot += burn * P.sootYield;
+  soot += burn * P.sootYield * SOOT_SCALE;
 
   // CO from glowing char and coals burns only where it is hotter, needs less air, and makes no
   // soot: the faint blue flames that flicker over embers once the wood gas is spent.
@@ -254,7 +259,7 @@ fn updateCell(c: vec3<i32>) {
 
   let tk = T * 0.001;
   let ta = P.tAmb * 0.001;
-  T -= P.cooling * (1.0 + 6.0 * soot) * (tk * tk * tk * tk - ta * ta * ta * ta) * dt;
+  T -= P.cooling * COOL_SCALE * (1.0 + 6.0 * soot) * (tk * tk * tk * tk - ta * ta * ta * ta) * dt;
   T = clamp(T, P.tAmb, 2300.0);
   soot = soot / (1.0 + 0.1 * dt);
   smoke = smoke / (1.0 + P.smokeDecay * dt);

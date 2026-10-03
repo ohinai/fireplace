@@ -44,4 +44,5 @@ struct Frame {
   skyLook: vec4<f32>,   // x: the faintest stars to show (magnitude), y: how bright the Milky Way is, z: moonlight on the sky
   grade: vec4<f32>,     // x: colour saturation (1 as it is); y: starlight (how much the stars are brought out, 0 as the eye sees them); z: 1 to draw the fire with a smooth filter (Ultra); w: fine detail for the flames (0..1, on a coarse grid)
   fades: array<vec4<f32>, 8>, // how see-through each thing that can turn so is, by its number (1 up): 0..1
+  fire: vec4<f32>,      // x: 1 to sample the fire at fixed places rather than random ones (Low)
 };

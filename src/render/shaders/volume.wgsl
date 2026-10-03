@@ -201,7 +201,17 @@ fn fs(@builtin(position) fragPos: vec4<f32>) -> VolumeOut {
   let stepLen = F.simH * F.stepScale;
   // Random start offset per pixel and frame: hides step banding, and the eye averages the
   // remaining grain over successive frames. (Structured noise such as IGN shows as hatching.)
-  let jitter = hash33(vec3<i32>(pix, i32(F.frameIdx))).x;
+  // On a coarse grid, with fine detail drawn into its flames (Low), that is too much: each
+  // pixel's light is a sum over thin, sharp-edged tongues, so a random start and nudge change it
+  // by a lot, and what the eye sees is grain eating the tongues, not banding hidden. There the
+  // samples go at fixed places (the middle of each step, no nudge): the same pixel gives the
+  // same light for the same flames, so there is no grain, the tongues are crisp, and the banding
+  // the steps leave is the same across neighbouring pixels (it does not show, even with steps
+  // of three quarters of a cell: Renderer.writeFrame). What is left is thin tongues popping in
+  // and out between drawn frames; the frames' usual averaging (combine.wgsl) calms that, as it
+  // does everywhere, and no longer smears anything, for there is no grain to be told from it.
+  let steady = F.fire.x > 0.5;
+  let jitter = select(hash33(vec3<i32>(pix, i32(F.frameIdx))).x, 0.5, steady);
   var t = tNear + jitter * stepLen;
   var L = vec3<f32>(0.0);
   var Tr = 1.0;
@@ -213,8 +223,11 @@ fn fs(@builtin(position) fragPos: vec4<f32>) -> VolumeOut {
     // filters out grid-scale streaks the rising gas carries, at no extra cost. (Less with fine
     // detail in the flames, which hides the streaks itself: on a coarse grid a wide nudge, into a
     // flame whose light climbs steeply with its temperature, shows as grain.)
-    let r = hash33(vec3<i32>(pix, i32(F.frameIdx) * 64 + step)).yz - 0.5;
-    let nudge = vec3<f32>(r.x, 0.0, r.y) * (mix(0.9, 0.35, F.grade.w) * F.simH);
+    var nudge = vec3<f32>(0.0);
+    if (!steady) {
+      let r = hash33(vec3<i32>(pix, i32(F.frameIdx) * 64 + step)).yz - 0.5;
+      nudge = vec3<f32>(r.x, 0.0, r.y) * (mix(0.9, 0.35, F.grade.w) * F.simH);
+    }
     let uvw = (ro + rd * t + nudge - bmin) / size;
     step++;
     var s = fieldSample(scal, uvw);

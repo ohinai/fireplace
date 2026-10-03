@@ -151,8 +151,12 @@ export class FireSim {
     // The finer the grid, the more of its cells the gases mix across in a step: on the finest,
     // more than one explicit pass can take, so the mixing is split into several, back and forth
     // (an odd number, to end where the forces pass reads).
-    const mixPasses = 2 * Math.ceil((Math.ceil((MIXING * SIM_DT) / (this.h * this.h) / MIX_STEP) - 1) / 2) + 1;
-    const mixing = { MIXING, MIX_PASSES: mixPasses };
+    // (A grid coarser than the one the mixing was tuned on cannot resolve the eddies between its
+    // cells' size and that: their share of the mixing grows as the cell size to the 4/3, the
+    // scaling of eddy diffusion in the inertial range of turbulence.)
+    const mixScale = quality.mixRef ? Math.pow(this.h / quality.mixRef, 4 / 3) : 1;
+    const mixPasses = 2 * Math.ceil((Math.ceil((MIXING * mixScale * SIM_DT) / (this.h * this.h) / MIX_STEP) - 1) / 2) + 1;
+    const mixing = { MIXING: MIXING * mixScale, MIX_PASSES: mixPasses };
     const mixOn = stage('mix', mixSrc, [P, S1, X1, solid, S2, X2], cellGroups, mixing);
     const tracing = { TRACE_CELLS: quality.traceCells ?? 0 };
     const mixBack = mixPasses > 1 ? stage('mix back', mixSrc, [P, S2, X2, solid, S1, X1], cellGroups, mixing) : mixOn;
@@ -168,6 +172,12 @@ export class FireSim {
         solidFacesSrc + solidMotionSrc + forcesSrc,
         [P, V1, S2, X2, { buffer: confine }, solid, logBuf, V2, S0, X0, { buffer: expand }, geo, flux, logs.mapSampler, logs.bedMap.createView(), sampler],
         texelGroups,
+        // (What a coarse grid needs besides more mixing: a thicker layer of gas off the logs, less soot
+        // per gas burnt, and more cooling. A cell holds flame and cool air mixed, so its mean
+        // temperature understates the radiation, which goes as the fourth power, and the more so the
+        // coarser the cell: the loss is scaled by about the square root of the cell size over High's,
+        // which fits all four rooms.)
+        { SURFACE_LAYER: Math.max(0.011, (quality.fuelLayer ?? 0) * this.h), SOOT_SCALE: quality.sootScale ?? 1, COOL_SCALE: quality.coolRef ? Math.sqrt(this.h / quality.coolRef) : 1 },
       ),
       stage('divergence', divergenceSrc, [P, V2, solid, { buffer: expand }, { buffer: div }], cellGroups),
     ];
@@ -357,7 +367,7 @@ export class FireSim {
     f[9] = this.time;
     f[10] = AMBIENT_TEMP;
     f[11] = p.buoyancy;
-    f[12] = p.vorticity;
+    f[12] = p.vorticity * (this.quality.swirl ?? 1);
     f[13] = p.damping;
     f[14] = p.burnRate;
     f[15] = p.ignitionTemp;

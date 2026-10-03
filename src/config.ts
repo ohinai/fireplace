@@ -26,6 +26,13 @@ export interface Quality {
   fps?: number; // the most frames a second to draw (the fire is still worked out sixty times a second)
   logEvery?: number; // work out the insides of the logs every this many steps (every step unless given)
   flameDetail?: number; // how much fine detail to draw into the flames, finer than the grid (0..1: see volume.wgsl)
+  mixRef?: number; // cell size (m) the gases' mixing was tuned on: a coarser grid mixes more (see FireSim.ts)
+  fuelLayer?: number; // thickness of the gas layer the logs feed, in cells (at least 11 mm: see forces.wgsl)
+  sootScale?: number; // soot per burnt wood gas, as a share of the usual (a coarse grid's smeared flames glow too long)
+  coolRef?: number; // cell size (m) the gas's radiative cooling was tuned on: coarser cells cool more, as the square root of the ratio (see FireSim.ts)
+  swirl?: number; // share of the usual vorticity confinement (a coarse grid's mixing already stands in for the small eddies)
+  steadyFire?: boolean; // sample the fire at fixed places, not random ones: no grain to average away (see volume.wgsl)
+  flameLight?: number; // multiplier on the flames' light (and on their light on the room): a coarse grid's flames are dimmer than a fine grid's fire of the same wood
 }
 
 /** The fire's time step (s): it is simulated sixty times a second of its own time. */
@@ -36,7 +43,12 @@ export const QUALITY: Record<string, Quality> = {
   // sweeps to match, a small picture (scaled up to fill the screen) drawn thirty times a second,
   // and the insides of the logs worked out every fourth step (they change slowly). About a tenth
   // of the work of Medium. (Not fewer physics steps: with fewer, a teepee of logs slowly slumps.)
-  low: { label: 'Low', cells: 48 * 54 * 24, pressureIterations: 12, pixels: 400_000, fps: 30, logEvery: 4, flameDetail: 1 },
+  // A coarse grid smears the thin sheets where wood gas meets air, so left as it is its flames come
+  // out two to four times too tall and bright: here they are calibrated to a fine grid's (more
+  // eddy mixing, a thicker layer of gas off the logs, less soot, more cooling, less vorticity
+  // confinement: all from the cell size, see FireSim.ts and forces.wgsl), shown at the light a fine
+  // grid's fire gives (flameLight, measured against High's pictures), and drawn without grain.
+  low: { label: 'Low', cells: 48 * 54 * 24, pressureIterations: 12, pixels: 400_000, fps: 30, logEvery: 4, flameDetail: 1, mixRef: 0.006, fuelLayer: 1.5, sootScale: 0.7, coolRef: 0.0067, swirl: 0.5, steadyFire: true, flameLight: 2.2 },
   medium: { label: 'Medium', cells: 96 * 108 * 48, pressureIterations: 20, pixels: 2_400_000 },
   high: { label: 'High', cells: 128 * 144 * 64, pressureIterations: 24, pixels: 2_400_000 },
   // For the fastest graphics cards there are (and those to come): nearly seven times the cells of

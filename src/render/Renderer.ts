@@ -58,7 +58,7 @@ const KEPT_WATCH: [number, number, number][] = [
   [185, 186, 2e-4],
   [188, 188 + MAX_CLEARINGS + 1, 2e-4],
 ];
-const FRAME_SIZE = 880;
+const FRAME_SIZE = 896;
 const LIGHT_BLOCKS = 4 * 3 * 2;
 const BLOOM_LEVELS = 6;
 const LIGHT_FIELD_DIVISOR = 3;
@@ -852,6 +852,7 @@ export class Renderer {
     // Smooth the fire over frames only while the camera holds still.
     const moved = camera.viewProj.some((v, i) => Math.abs(v - this.lastViewProj[i]) > 1e-5);
     this.lastViewProj.set(camera.viewProj);
+    // (On Low, where the fire has no grain, it still smooths the thin tongues' flicker from one drawn frame to the next.)
     const blend = this.historyValid && !moved ? 1 - 0.5 * params.smoothing : 1;
     this.writeFrame(camera, params, time, sim, t.hdr.width, t.hdr.height, blend, dt);
 
@@ -1125,7 +1126,8 @@ export class Renderer {
     f[44] = width;
     f[45] = height;
     f[46] = p.exposure;
-    f[47] = p.emission;
+    // The flames' light on a coarse grid is calibrated to what a fine grid's fire of that wood gives.
+    f[47] = p.emission * (sim.quality.flameLight ?? 1);
     f[48] = p.absorption;
     f[49] = p.blueGlow;
     f[50] = p.ignitionTemp;
@@ -1138,7 +1140,7 @@ export class Renderer {
     f[53] = p.glowBoost;
     f[54] = p.bloom;
     f[55] = p.lightGain;
-    f[56] = 0.5; // ray-march step, in cells
+    f[56] = sim.quality.steadyFire ? 0.75 : 0.5; // ray-march step, in cells (coarser where the samples sit at fixed places: see volume.wgsl)
     f[57] = AMBIENT_TEMP;
     f[58] = this.frameIndex % 1024;
     f[59] = this.lighting.time === 'day' ? 0.3 : 0.6;
@@ -1195,6 +1197,7 @@ export class Renderer {
     this.writeSky(f);
     f.set([p.saturation, room.sky ? p.starlight : 0, sim.quality.smooth ? 1 : 0, sim.quality.flameDetail ?? 0], 184);
     this.writeFades(f, camera, dt);
+    f[220] = sim.quality.steadyFire ? 1 : 0;
     this.device.queue.writeBuffer(this.frameBuf, 0, this.frameData);
   }
 

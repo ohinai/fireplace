@@ -94,7 +94,10 @@ and the rest under **More settings**:
   grid of 15 mm cells, a small picture scaled up to the screen, thirty frames a second, and the
   insides of the logs worked out every fourth step: about a tenth of the work of Medium; phones
   start on it; the flames are drawn with detail finer than the grid, in tongues carried along
-  with the gas, as a coarse grid smears a flame's thin sheets into glowing blobs), Medium, High,
+  with the gas, as a coarse grid smears a flame's thin sheets into glowing blobs, sampled at
+  fixed places so that they show no grain; and its fire is calibrated to a fine grid's, since
+  a coarse one burns its wood gas in flames two to four times too big: more mixing, less soot,
+  more cooling, gentler confinement, and the light a fine grid's fire gives), Medium, High,
   or **Ultra**, for the fastest graphics cards there are and those to come: nearly eight million cells, 3 mm across in a
   fireplace (seven times High's), with the flames drawn through a smooth filter, so that even
   close up no trace of the grid shows in them; sharp on a 4K screen. It takes about a gigabyte
@@ -406,7 +409,8 @@ soot and white smoke:
    together. A small eddy diffusion of the gases (not of heat, which would put out a thin
    flame) stands in for them, the same on every grid, so the flames burn by the wood on a
    fine grid as they do on a coarse one. (On the finest grid it reaches further in a step than
-   one explicit pass can safely take, so it is done in several.)
+   one explicit pass can safely take, so it is done in several. On the coarse grid of Low it
+   grows with the cell size to the 4/3, for the eddies that grid cannot resolve.)
 4. **Sources and combustion.** Wood gas, CO and steam come off the log surfaces, and CO off
    the coals. Fuel burns where it is hot enough and meets oxygen, releasing heat and soot.
    Soot burns off in hot air, which is what ends a flame, leaving a little of itself as
